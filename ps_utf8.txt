@@ -1,0 +1,9 @@
+﻿NAME                 IMAGE                      COMMAND                  SERVICE      CREATED        STATUS                      PORTS
+lemcs-backend-1      lemcs-backend              "uvicorn app.main:apโ€ฆ"   backend      30 hours ago   Up 28 minutes (unhealthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+lemcs-frontend-1     lemcs-frontend             "docker-entrypoint.sโ€ฆ"   frontend     22 hours ago   Up 28 minutes (unhealthy)   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+lemcs-grafana-1      grafana/grafana:latest     "/run.sh"                grafana      35 hours ago   Up 28 minutes               0.0.0.0:3001->3000/tcp, [::]:3001->3000/tcp
+lemcs-minio-1        minio/minio:latest         "/usr/bin/docker-entโ€ฆ"   minio        35 hours ago   Up 28 minutes (healthy)     0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+lemcs-pgbouncer-1    edoburu/pgbouncer:latest   "/entrypoint.sh /usrโ€ฆ"   pgbouncer    35 hours ago   Up 28 minutes               0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+lemcs-postgres-1     postgres:16-alpine         "docker-entrypoint.sโ€ฆ"   postgres     35 hours ago   Up 28 minutes (healthy)     5432/tcp
+lemcs-prometheus-1   prom/prometheus:latest     "/bin/prometheus --cโ€ฆ"   prometheus   35 hours ago   Up 28 minutes               9090/tcp
+lemcs-redis-1        redis:7-alpine             "docker-entrypoint.sโ€ฆ"   redis        35 hours ago   Up 28 minutes (healthy)     6379/tcp

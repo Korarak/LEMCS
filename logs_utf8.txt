@@ -1,0 +1,123 @@
+﻿frontend-1  |  GET /api/health 404 in 22ms
+frontend-1  |  โ“ Compiled in 979ms (500 modules)
+frontend-1  |  GET /api/health 404 in 83ms
+frontend-1  |  GET /api/health 404 in 61ms
+frontend-1  |  GET /icon-192x192.png 404 in 59ms
+frontend-1  |  GET /dashboard 200 in 85ms
+frontend-1  |  GET /icon-192x192.png 404 in 60ms
+frontend-1  |  GET /icon-192x192.png 404 in 71ms
+frontend-1  |  GET /icon-192x192.png 404 in 30ms
+frontend-1  |  GET /api/health 404 in 35ms
+frontend-1  |  GET /api/health 404 in 24ms
+frontend-1  |  GET /api/health 404 in 32ms
+frontend-1  |  GET /api/health 404 in 25ms
+frontend-1  |  GET /api/health 404 in 30ms
+frontend-1  |  GET /api/health 404 in 23ms
+frontend-1  |  GET /api/health 404 in 47ms
+frontend-1  |  GET /api/health 404 in 29ms
+frontend-1  |  GET /api/health 404 in 30ms
+frontend-1  |  GET /icon-192x192.png 404 in 32ms
+frontend-1  |  GET /api/health 404 in 28ms
+frontend-1  |  GET /api/health 404 in 35ms
+frontend-1  |  GET /api/health 404 in 24ms
+frontend-1  |  GET /api/health 404 in 29ms
+backend-1   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   | _rust_notify.WatchfilesRustInternalError: error in underlying watcher: Input/output error (os error 5)
+backend-1   | INFO:     172.20.0.4:39112 - "GET /metrics HTTP/1.1" 200 OK
+backend-1   | INFO:     Will watch for changes in these directories: ['/app']
+backend-1   | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+backend-1   | INFO:     Started reloader process [1] using WatchFiles
+backend-1   | INFO:     Started server process [8]
+backend-1   | INFO:     Waiting for application startup.
+backend-1   | ERROR:    Traceback (most recent call last):
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/starlette/routing.py", line 734, in lifespan
+backend-1   |     async with self.lifespan_context(app) as maybe_state:
+backend-1   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+backend-1   |     return await anext(self.gen)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/app/app/main.py", line 15, in lifespan
+backend-1   |     async with engine.begin() as conn:
+backend-1   |                ^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/contextlib.py", line 210, in __aenter__
+backend-1   |     return await anext(self.gen)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py", line 1055, in begin
+backend-1   |     async with conn:
+backend-1   |                ^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/base.py", line 121, in __aenter__
+backend-1   |     return await self.start(is_ctxmanager=True)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/ext/asyncio/engine.py", line 270, in start
+backend-1   |     await greenlet_spawn(self.sync_engine.connect)
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 197, in greenlet_spawn
+backend-1   |     result = context.throw(*sys.exc_info())
+backend-1   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 3279, in connect
+backend-1   |     return self._connection_cls(self)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+backend-1   |     self._dbapi_connection = engine.raw_connection()
+backend-1   |                              ^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 3303, in raw_connection
+backend-1   |     return self.pool.connect()
+backend-1   |            ^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+backend-1   |     return _ConnectionFairy._checkout(self)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 1263, in _checkout
+backend-1   |     fairy = _ConnectionRecord.checkout(pool)
+backend-1   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 712, in checkout
+backend-1   |     rec = pool._do_get()
+backend-1   |           ^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/impl.py", line 179, in _do_get
+backend-1   |     with util.safe_reraise():
+backend-1   |          ^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+backend-1   |     raise exc_value.with_traceback(exc_tb)
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+backend-1   |     return self._create_connection()
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 390, in _create_connection
+backend-1   |     return _ConnectionRecord(self)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 674, in __init__
+backend-1   |     self.__connect()
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 900, in __connect
+backend-1   |     with util.safe_reraise():
+backend-1   |          ^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/langhelpers.py", line 146, in __exit__
+backend-1   |     raise exc_value.with_traceback(exc_tb)
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/pool/base.py", line 896, in __connect
+backend-1   |     self.dbapi_connection = connection = pool._invoke_creator(self)
+backend-1   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/create.py", line 643, in connect
+backend-1   |     return dialect.connect(*cargs, **cparams)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 616, in connect
+backend-1   |     return self.loaded_dbapi.connect(*cargs, **cparams)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 937, in connect
+backend-1   |     await_only(creator_fn(*arg, **kw)),
+backend-1   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 127, in await_only
+backend-1   |     return current.driver.switch(awaitable)  # type: ignore[no-any-return]
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 192, in greenlet_spawn
+backend-1   |     value = await result
+backend-1   |             ^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/asyncpg/connection.py", line 2329, in connect
+backend-1   |     return await connect_utils._connect(
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+backend-1   |     conn = await _connect_addr(
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+backend-1   |     return await __connect_addr(params, True, *args)
+backend-1   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend-1   |   File "/usr/local/lib/python3.12/site-packages/asyncpg/connect_utils.py", line 876, in __connect_addr
+backend-1   |     await connected
+backend-1   | asyncpg.exceptions.CannotConnectNowError: the database system is starting up
+backend-1   | 
+backend-1   | ERROR:    Application startup failed. Exiting.
