@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+README.md
+.next
+.git
+.vscode
+public/sw.js
+public/workbox-*.js
+public/sw.js.map
+public/workbox-*.js.map

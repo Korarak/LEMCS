@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ไม่มีการเชื่อมต่ออินเทอร์เน็ต — LEMCS</title>
+  <style>
+    body {
+      font-family: 'Noto Sans Thai', Sarabun, sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0;
+      background: linear-gradient(135deg, #EFF6FF 0%, #F9FAFB 100%);
+    }
+    .container { text-align: center; padding: 2rem; max-width: 400px; }
+    .emoji { font-size: 5rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.5rem; color: #1F2937; margin-bottom: 0.5rem; }
+    p { color: #6B7280; line-height: 1.6; margin-bottom: 1.5rem; }
+    .btn {
+      background: #3B82F6; color: white; border: none;
+      padding: 0.75rem 2rem; border-radius: 0.5rem;
+      font-size: 1rem; cursor: pointer;
+    }
+    .btn:hover { background: #2563EB; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="emoji">📵</div>
+    <h1>ไม่มีการเชื่อมต่ออินเทอร์เน็ต</h1>
+    <p>กรุณาตรวจสอบการเชื่อมต่อ WiFi หรือข้อมูลมือถือ<br>แล้วลองใหม่อีกครั้ง</p>
+    <button class="btn" onclick="window.location.reload()">ลองใหม่</button>
+    <p style="margin-top:1rem;font-size:0.875rem;color:#9CA3AF">
+      — LEMCS ระบบประเมินสุขภาพจิต จ.เลย —
+    </p>
+  </div>
+</body>
+</html>

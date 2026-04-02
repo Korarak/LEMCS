@@ -1,0 +1,82 @@
+# ── Environment & Secrets ───────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.cover
+.hypothesis/
+htmlcov/
+.tox/
+
+# ── Node / Next.js ───────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+.cache/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Docker volumes (if bind-mounted locally) ─────────────────────────────────
+pgdata/
+redisdata/
+miniodata/
+prometheusdata/
+grafanadata/
+
+# ── Logs & Temp ──────────────────────────────────────────────────────────────
+*.log
+logs/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ── Database dumps ───────────────────────────────────────────────────────────
+*.sql
+*.dump
+*.bak
+
+# ── Coverage & Tests ─────────────────────────────────────────────────────────
+coverage/
+.coverage
+lcov.info
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+desktop.ini
+$RECYCLE.BIN/

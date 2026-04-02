@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  backend:
+    # เมานต์โค้ดจากเครื่องหลัก (Host) เข้าไปใน Container
+    volumes:
+      - ./backend:/app
+    # ใช้ --reload เพื่อให้ Uvicorn รีสตาร์ทตัวเองเมื่อโค้ดเปลี่ยน
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload 
+
+  frontend:
+    # ระบุให้ใช้ Stage Builder (ที่มี Next.js dev dependencies)
+    build:
+      context: ./frontend
+      target: builder
+    # เมานต์โค้ดจากเครื่องหลัก เพื่อให้ Next.js อ่านไฟล์ตรงๆ
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # ซ่อน node_modules ของ Windows ไว้ ใช้ของ Linux ใน Container แทน
+      - /app/.next
+    # บังคับรันแบบ Development Mode
+    command: npm run dev
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true # แก้ปัญหา Next.js ไม่ยอม Hot Reload พิมพ์บน Windows+Docker

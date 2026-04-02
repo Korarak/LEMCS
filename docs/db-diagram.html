@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEMCS — Database ER Diagram & Data Dictionary</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #f8fafc; --card: #fff; --border: #e2e8f0;
+    --text: #1e293b; --muted: #64748b; --code: #475569;
+    --pk: #7c3aed; --fk: #0369a1; --uk: #0891b2; --nn: #dc2626;
+    --t1: #ede9fe; --t1b: #7c3aed;   /* org hierarchy */
+    --t2: #dbeafe; --t2b: #1d4ed8;   /* people */
+    --t3: #dcfce7; --t3b: #16a34a;   /* assessments */
+    --t4: #fef9c3; --t4b: #ca8a04;   /* notifications/logs */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  /* ── Layout ── */
+  .wrapper { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 40px; }
+  h2 { font-size: 1.25rem; font-weight: 700; margin: 40px 0 16px; padding-left: 12px; border-left: 4px solid var(--border); }
+  h2.section { border-color: #6366f1; }
+
+  /* ── Diagram box ── */
+  .diagram-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 32px; overflow-x: auto; }
+  .mermaid { min-width: 700px; }
+
+  /* ── Legend ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Tag badges ── */
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: .5px; white-space: nowrap; }
+  .pk   { background: #ede9fe; color: var(--pk); }
+  .fk   { background: #dbeafe; color: var(--fk); }
+  .uk   { background: #e0f2fe; color: var(--uk); }
+  .nn   { background: #fee2e2; color: var(--nn); }
+  .enc  { background: #fce7f3; color: #9d174d; }
+  .hash { background: #fce7f3; color: #9d174d; }
+  .auto { background: #f1f5f9; color: #475569; }
+  .def  { background: #f0fdf4; color: #166534; }
+
+  /* ── Table group cards ── */
+  .group { margin-bottom: 36px; }
+  .group-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px 10px 0 0; font-weight: 700; font-size: 0.9rem; }
+  .group-body   { border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; overflow: hidden; }
+
+  .g-org   .group-header { background: var(--t1); color: var(--t1b); border: 1px solid #c4b5fd; border-bottom: none; }
+  .g-ppl   .group-header { background: var(--t2); color: var(--t2b); border: 1px solid #93c5fd; border-bottom: none; }
+  .g-ass   .group-header { background: var(--t3); color: var(--t3b); border: 1px solid #86efac; border-bottom: none; }
+  .g-log   .group-header { background: var(--t4); color: var(--t4b); border: 1px solid #fde68a; border-bottom: none; }
+
+  /* ── Dict table ── */
+  .dict-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .dict-table thead tr { background: #f8fafc; }
+  .dict-table th { padding: 8px 12px; text-align: left; font-weight: 600; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .5px; border-bottom: 2px solid var(--border); }
+  .dict-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .dict-table tr:last-child td { border-bottom: none; }
+  .dict-table tr:hover td { background: #f8fafc; }
+
+  .col-name { font-family: 'Consolas', monospace; font-weight: 600; color: var(--code); }
+  .col-type { font-family: 'Consolas', monospace; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+  .col-desc { color: var(--text); }
+  .col-enum { font-family: 'Consolas', monospace; font-size: 0.78rem; color: #6366f1; }
+
+  /* ── Sub-table name header ── */
+  .tname { padding: 6px 12px 4px; font-family: 'Consolas', monospace; font-size: 0.8rem; font-weight: 700; color: var(--muted); background: #f1f5f9; letter-spacing: .3px; border-bottom: 1px solid var(--border); }
+
+  /* ── Note box ── */
+  .note { background: #fff7ed; border-left: 4px solid #fb923c; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 0.85rem; margin: 8px 12px 12px; color: #7c3a12; }
+
+  /* ── Relationship table ── */
+  .rel-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .rel-table th { padding: 8px 12px; text-align: left; font-weight: 600; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; border-bottom: 2px solid var(--border); }
+  .rel-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-family: 'Consolas', monospace; font-size: 0.82rem; }
+  .rel-table tr:last-child td { border-bottom: none; }
+  .arrow { color: #6366f1; font-weight: 700; }
+  .rel-type { color: var(--muted); font-size: 0.78rem; font-family: sans-serif; }
+
+  /* ── Scoring summary ── */
+  .score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .score-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .score-card h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 10px; }
+  .score-card table { width: 100%; font-size: 0.82rem; border-collapse: collapse; }
+  .score-card td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .score-card tr:last-child td { border-bottom: none; }
+  .lv-normal   { color: #16a34a; font-weight: 600; }
+  .lv-mild     { color: #ca8a04; font-weight: 600; }
+  .lv-moderate { color: #ea580c; font-weight: 600; }
+  .lv-severe   { color: #dc2626; font-weight: 600; }
+  .lv-vsevere  { color: #7f1d1d; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <h1>LEMCS — Database Schema</h1>
+  <p class="subtitle">Loei Educational MindCare System &nbsp;·&nbsp; PostgreSQL 16 &nbsp;·&nbsp; 9 Tables &nbsp;·&nbsp; Updated 2026-03-28</p>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ER DIAGRAM
+  ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section">ER Diagram</h2>
+  <div class="diagram-box">
+    <pre class="mermaid">
+erDiagram
+    affiliations {
+        int    id    PK
+        text   name
+    }
+    districts {
+        int    id               PK
+        text   name
+        int    affiliation_id   FK
+    }
+    schools {
+        int    id           PK
+        text   name
+        int    district_id  FK
+        text   school_type
+    }
+    students {
+        uuid   id              PK
+        text   student_code    UK
+        text   national_id
+        text   national_id_hash
+        text   first_name
+        text   last_name
+        text   gender
+        date   birthdate
+        text   grade
+        text   classroom
+        int    school_id       FK
+        bool   is_active
+        tstz   created_at
+    }
+    users {
+        uuid   id             PK
+        uuid   student_id     FK
+        text   username       UK
+        text   hashed_password
+        text   role
+        int    school_id      FK
+        int    affiliation_id FK
+        int    district_id    FK
+        bool   is_active
+        tstz   last_login
+    }
+    assessments {
+        uuid   id              PK
+        uuid   student_id      FK
+        text   assessment_type
+        jsonb  responses
+        int    score
+        text   severity_level
+        bool   suicide_risk
+        text   academic_year
+        int    term
+        tstz   created_at
+    }
+    alerts {
+        uuid   id            PK
+        uuid   student_id    FK
+        uuid   assessment_id FK
+        text   alert_level
+        text   status
+        uuid   assigned_to   FK
+        text   note
+        tstz   created_at
+        tstz   updated_at
+    }
+    notifications {
+        uuid   id         PK
+        uuid   user_id    FK
+        text   title
+        text   message
+        text   link
+        bool   is_read
+        tstz   created_at
+    }
+    audit_logs {
+        int    id         PK
+        uuid   user_id    FK
+        text   action
+        text   resource
+        jsonb  details
+        text   ip_address
+        tstz   created_at
+    }
+
+    affiliations  ||--o{ districts      : "มี"
+    districts     ||--o{ schools        : "มี"
+    schools       ||--o{ students       : "สังกัด"
+    students      ||--o{ assessments    : "ทำแบบประเมิน"
+    assessments   ||--o| alerts         : "สร้าง alert"
+    students      ||--o{ alerts         : "ถูก alert"
+    users         }o--o| students       : "เชื่อมกับ"
+    users         }o--o| schools        : "ดูแล"
+    users         }o--o| affiliations   : "scoped"
+    users         }o--o| districts      : "scoped"
+    users         ||--o{ notifications  : "รับ"
+    users         ||--o{ audit_logs     : "กระทำ"
+    alerts        }o--o| users          : "มอบหมายให้"
+    </pre>
+  </div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="dot" style="background:#7c3aed"></span> PK — Primary Key</span>
+    <span class="legend-item"><span class="dot" style="background:#0369a1"></span> FK — Foreign Key</span>
+    <span class="legend-item"><span class="dot" style="background:#0891b2"></span> UK — Unique Key</span>
+    <span class="legend-item"><span class="dot" style="background:#dc2626"></span> NOT NULL</span>
+    <span class="legend-item"><span class="dot" style="background:#9d174d"></span> Encrypted / Hash</span>
+    <span class="legend-item">|| one &nbsp; o{ many &nbsp; o| zero-or-one</span>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       DATA DICTIONARY
+  ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section">Data Dictionary</h2>
+
+  <!-- ── GROUP 1: Org Hierarchy ── -->
+  <div class="group g-org">
+    <div class="group-header">🏛️ &nbsp;กลุ่มที่ 1 — โครงสร้างองค์กร &nbsp;<small style="font-weight:400;opacity:.7">(affiliations · districts · schools)</small></div>
+    <div class="group-body">
+
+      <div class="tname">affiliations &nbsp;—&nbsp; สังกัด</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">INTEGER</td><td><span class="badge pk">PK</span> <span class="badge auto">autoincrement</span></td><td class="col-desc">รหัสสังกัด</td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">ชื่อสังกัด เช่น "สพฐ.", "อาชีวศึกษา", "เอกชน", "กศน."</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tname" style="margin-top:1px">districts &nbsp;—&nbsp; เขตพื้นที่การศึกษา</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">INTEGER</td><td><span class="badge pk">PK</span> <span class="badge auto">autoincrement</span></td><td class="col-desc">รหัสเขตพื้นที่</td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">ชื่อเขต เช่น "สพป.เลย เขต 1", "สพม.เลย"</td></tr>
+          <tr><td class="col-name">affiliation_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → affiliations</span></td><td class="col-desc">สังกัดที่เขตนี้อยู่ภายใต้</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tname" style="margin-top:1px">schools &nbsp;—&nbsp; โรงเรียน / สถานศึกษา</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">INTEGER</td><td><span class="badge pk">PK</span> <span class="badge auto">autoincrement</span></td><td class="col-desc">รหัสโรงเรียน</td></tr>
+          <tr><td class="col-name">name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">ชื่อสถานศึกษา</td></tr>
+          <tr><td class="col-name">district_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → districts</span></td><td class="col-desc">เขตพื้นที่ที่โรงเรียนสังกัด</td></tr>
+          <tr><td class="col-name">school_type</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">ประถมศึกษา · มัธยมศึกษา · อาชีวศึกษา · เอกชน · กศน.</td></tr>
+        </tbody>
+      </table>
+      <div class="note">โครงสร้างลำดับชั้น: สังกัด → เขตพื้นที่ → โรงเรียน ใช้กำหนดขอบเขตข้อมูล (RBAC scope) ของแต่ละผู้ดูแล</div>
+    </div>
+  </div>
+
+  <!-- ── GROUP 2: People ── -->
+  <div class="group g-ppl">
+    <div class="group-header">👤 &nbsp;กลุ่มที่ 2 — บุคคล &nbsp;<small style="font-weight:400;opacity:.7">(students · users)</small></div>
+    <div class="group-body">
+
+      <div class="tname">students &nbsp;—&nbsp; นักเรียน</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">UUID</td><td><span class="badge pk">PK</span> <span class="badge auto">uuid4</span></td><td class="col-desc">รหัสนักเรียน (UUID)</td></tr>
+          <tr><td class="col-name">student_code</td><td class="col-type">TEXT</td><td><span class="badge uk">UNIQUE</span> <span class="badge nn">NOT NULL</span></td><td class="col-desc">รหัสประจำตัวนักเรียน (ใช้ล็อกอิน)</td></tr>
+          <tr><td class="col-name">national_id</td><td class="col-type">TEXT</td><td><span class="badge enc">AES-256</span></td><td class="col-desc">เลขบัตรประชาชน <strong>เข้ารหัสทั้งหมด</strong> — อ่านได้ด้วย ENCRYPTION_KEY เท่านั้น</td></tr>
+          <tr><td class="col-name">national_id_hash</td><td class="col-type">TEXT</td><td><span class="badge hash">SHA-256</span></td><td class="col-desc">Hash ของเลขบัตรฯ สำหรับค้นหาและยืนยันตัวตนโดยไม่ต้องถอดรหัส</td></tr>
+          <tr><td class="col-name">first_name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">ชื่อ</td></tr>
+          <tr><td class="col-name">last_name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">นามสกุล</td></tr>
+          <tr><td class="col-name">gender</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">male · female</td></tr>
+          <tr><td class="col-name">birthdate</td><td class="col-type">DATE</td><td></td><td class="col-desc">วันเดือนปีเกิด (ใช้ยืนยันตัวตนเมื่อล็อกอิน)</td></tr>
+          <tr><td class="col-name">grade</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">ป.4 · ป.5 · ป.6 · ม.1–6 · ปวช.1–3</td></tr>
+          <tr><td class="col-name">classroom</td><td class="col-type">TEXT</td><td></td><td class="col-desc">ห้อง เช่น "1", "2", "3"</td></tr>
+          <tr><td class="col-name">school_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → schools</span></td><td class="col-desc">โรงเรียนที่นักเรียนสังกัด</td></tr>
+          <tr><td class="col-name">is_active</td><td class="col-type">BOOLEAN</td><td><span class="badge def">default true</span></td><td class="col-desc">สถานะบัญชี (false = ถูกระงับ)</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now()</span></td><td class="col-desc">วันที่สร้างบัญชี</td></tr>
+        </tbody>
+      </table>
+      <div class="note">⚠️ PDPA: national_id ต้องเข้ารหัส AES-256 เสมอ ห้ามบันทึกในรูป plaintext. ENCRYPTION_KEY ต้องยาว 32 ตัวอักษรพอดี</div>
+
+      <div class="tname" style="margin-top:1px">users &nbsp;—&nbsp; ผู้ใช้งานระบบ (ผู้ดูแล + นักเรียน)</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">UUID</td><td><span class="badge pk">PK</span> <span class="badge auto">uuid4</span></td><td class="col-desc">รหัสผู้ใช้</td></tr>
+          <tr><td class="col-name">student_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → students</span></td><td class="col-desc">เชื่อมกับ students (เฉพาะ role = student)</td></tr>
+          <tr><td class="col-name">username</td><td class="col-type">TEXT</td><td><span class="badge uk">UNIQUE</span></td><td class="col-desc">ชื่อผู้ใช้สำหรับ admin login</td></tr>
+          <tr><td class="col-name">hashed_password</td><td class="col-type">TEXT</td><td></td><td class="col-desc">รหัสผ่าน — bcrypt hash</td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">systemadmin · superadmin · commissionadmin · schooladmin · student</td></tr>
+          <tr><td class="col-name">school_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → schools</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ schooladmin</td></tr>
+          <tr><td class="col-name">affiliation_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → affiliations</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ commissionadmin (สังกัด)</td></tr>
+          <tr><td class="col-name">district_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → districts</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ commissionadmin (เขต)</td></tr>
+          <tr><td class="col-name">is_active</td><td class="col-type">BOOLEAN</td><td><span class="badge def">default true</span></td><td class="col-desc">สถานะบัญชี</td></tr>
+          <tr><td class="col-name">last_login</td><td class="col-type">TIMESTAMPTZ</td><td></td><td class="col-desc">วันเวลาที่เข้าสู่ระบบล่าสุด</td></tr>
+        </tbody>
+      </table>
+
+      <!-- RBAC mini table -->
+      <div style="padding:12px 16px 16px">
+        <div style="font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:8px">RBAC — FK ที่ใช้งานตาม Role</div>
+        <table style="font-size:.82rem;border-collapse:collapse;width:100%">
+          <thead style="background:#f1f5f9">
+            <tr>
+              <th style="padding:6px 10px;text-align:left;border:1px solid var(--border)">Role</th>
+              <th style="padding:6px 10px;text-align:center;border:1px solid var(--border)">school_id</th>
+              <th style="padding:6px 10px;text-align:center;border:1px solid var(--border)">affiliation_id</th>
+              <th style="padding:6px 10px;text-align:center;border:1px solid var(--border)">district_id</th>
+              <th style="padding:6px 10px;text-align:left;border:1px solid var(--border)">ขอบเขตที่มองเห็น</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:5px 10px;border:1px solid var(--border);font-family:monospace">systemadmin</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="padding:5px 10px;border:1px solid var(--border)">ทุกข้อมูลในระบบ</td></tr>
+            <tr><td style="padding:5px 10px;border:1px solid var(--border);font-family:monospace">superadmin</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="padding:5px 10px;border:1px solid var(--border)">ทุกสังกัด (จังหวัดเลย)</td></tr>
+            <tr><td style="padding:5px 10px;border:1px solid var(--border);font-family:monospace">commissionadmin</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">✅</td><td style="text-align:center;border:1px solid var(--border)">✅</td><td style="padding:5px 10px;border:1px solid var(--border)">เฉพาะโรงเรียนในเขต/สังกัดตัวเอง</td></tr>
+            <tr><td style="padding:5px 10px;border:1px solid var(--border);font-family:monospace">schooladmin</td><td style="text-align:center;border:1px solid var(--border)">✅</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="padding:5px 10px;border:1px solid var(--border)">เฉพาะโรงเรียนตัวเอง</td></tr>
+            <tr><td style="padding:5px 10px;border:1px solid var(--border);font-family:monospace">student</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="text-align:center;border:1px solid var(--border)">—</td><td style="padding:5px 10px;border:1px solid var(--border)">ข้อมูลตัวเองเท่านั้น</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── GROUP 3: Assessments & Alerts ── -->
+  <div class="group g-ass">
+    <div class="group-header">📋 &nbsp;กลุ่มที่ 3 — การประเมินและแจ้งเตือน &nbsp;<small style="font-weight:400;opacity:.7">(assessments · alerts)</small></div>
+    <div class="group-body">
+
+      <div class="tname">assessments &nbsp;—&nbsp; ผลการประเมินสุขภาพจิต</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">UUID</td><td><span class="badge pk">PK</span> <span class="badge auto">uuid4</span></td><td class="col-desc">รหัสผลประเมิน</td></tr>
+          <tr><td class="col-name">student_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → students</span> <span class="badge nn">NOT NULL</span></td><td class="col-desc">นักเรียนที่ทำแบบประเมิน</td></tr>
+          <tr><td class="col-name">assessment_type</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">ST5 (ความเครียด) · PHQA (ซึมเศร้าวัยรุ่น) · CDI (ซึมเศร้าเด็ก)</td></tr>
+          <tr><td class="col-name">responses</td><td class="col-type">JSONB</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">คำตอบแต่ละข้อ รูปแบบ: <code style="font-size:.8rem">{"answers": [0, 1, 2, ...]}</code></td></tr>
+          <tr><td class="col-name">score</td><td class="col-type">INTEGER</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">คะแนนรวม (ST5: 0–15 · PHQA: 0–27 · CDI: 0–54)</td></tr>
+          <tr><td class="col-name">severity_level</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">normal · mild · moderate · severe · very_severe</td></tr>
+          <tr><td class="col-name">suicide_risk</td><td class="col-type">BOOLEAN</td><td><span class="badge def">default false</span></td><td class="col-desc">ความเสี่ยงฆ่าตัวตาย — ตรวจจากข้อ 9 ของ PHQA (ถ้า &gt; 0 → true)</td></tr>
+          <tr><td class="col-name">academic_year</td><td class="col-type">TEXT</td><td></td><td class="col-desc">ปีการศึกษา เช่น "2567"</td></tr>
+          <tr><td class="col-name">term</td><td class="col-type">INTEGER</td><td></td><td class="col-desc">ภาคเรียน: 1 หรือ 2</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now()</span></td><td class="col-desc">วันเวลาที่ทำแบบประเมิน</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Scoring summary -->
+      <div style="padding:12px 16px 16px">
+        <div style="font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:10px">Scoring Reference</div>
+        <div class="score-grid">
+          <div class="score-card">
+            <h4>ST-5 &nbsp;<small style="font-weight:400;color:var(--muted)">ความเครียด (5 ข้อ, 0–15 คะแนน)</small></h4>
+            <table><tbody>
+              <tr><td>0 – 4</td><td class="lv-normal">ปกติ (normal)</td></tr>
+              <tr><td>5 – 7</td><td class="lv-mild">เครียดเล็กน้อย (mild)</td></tr>
+              <tr><td>8 – 9</td><td class="lv-moderate">เครียดปานกลาง (moderate)</td></tr>
+              <tr><td>10 – 15</td><td class="lv-severe">เครียดมาก (severe)</td></tr>
+            </tbody></table>
+          </div>
+          <div class="score-card">
+            <h4>PHQ-A &nbsp;<small style="font-weight:400;color:var(--muted)">ซึมเศร้าวัยรุ่น (9 ข้อ, 0–27 คะแนน)</small></h4>
+            <table><tbody>
+              <tr><td>0 – 4</td><td class="lv-normal">ไม่มีอาการ (normal)</td></tr>
+              <tr><td>5 – 9</td><td class="lv-mild">เล็กน้อย (mild)</td></tr>
+              <tr><td>10 – 14</td><td class="lv-moderate">ปานกลาง (moderate)</td></tr>
+              <tr><td>15 – 19</td><td class="lv-severe">รุนแรง (severe)</td></tr>
+              <tr><td>20 – 27</td><td class="lv-vsevere">รุนแรงมาก (very_severe)</td></tr>
+            </tbody></table>
+          </div>
+          <div class="score-card">
+            <h4>CDI &nbsp;<small style="font-weight:400;color:var(--muted)">ซึมเศร้าเด็ก (27 ข้อ, 0–54 คะแนน)</small></h4>
+            <table><tbody>
+              <tr><td>0 – 12</td><td class="lv-normal">ปกติ (normal)</td></tr>
+              <tr><td>13 – 19</td><td class="lv-mild">เล็กน้อย (mild)</td></tr>
+              <tr><td>20 – 29</td><td class="lv-moderate">ปานกลาง (moderate)</td></tr>
+              <tr><td>30 – 54</td><td class="lv-severe">รุนแรง (severe)</td></tr>
+            </tbody></table>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:6px">* บางข้อใช้ inverted scoring</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tname" style="margin-top:1px">alerts &nbsp;—&nbsp; การแจ้งเตือนนักเรียนเสี่ยง</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">UUID</td><td><span class="badge pk">PK</span> <span class="badge auto">uuid4</span></td><td class="col-desc">รหัส alert</td></tr>
+          <tr><td class="col-name">student_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → students</span></td><td class="col-desc">นักเรียนที่ถูกแจ้งเตือน</td></tr>
+          <tr><td class="col-name">assessment_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → assessments</span></td><td class="col-desc">ผลประเมินที่ก่อให้เกิด alert</td></tr>
+          <tr><td class="col-name">alert_level</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">high · critical</td></tr>
+          <tr><td class="col-name">status</td><td class="col-type">TEXT</td><td><span class="badge def">default "new"</span></td><td class="col-desc col-enum">new → in_progress → resolved / closed</td></tr>
+          <tr><td class="col-name">assigned_to</td><td class="col-type">UUID</td><td><span class="badge fk">FK → users</span></td><td class="col-desc">ผู้ดูแลที่รับผิดชอบ alert นี้</td></tr>
+          <tr><td class="col-name">note</td><td class="col-type">TEXT</td><td></td><td class="col-desc">บันทึกการดำเนินการ</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now()</span></td><td class="col-desc">วันเวลาที่สร้าง alert</td></tr>
+          <tr><td class="col-name">updated_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now() + onupdate</span></td><td class="col-desc">วันเวลาที่อัปเดตล่าสุด</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── GROUP 4: Notifications & Logs ── -->
+  <div class="group g-log">
+    <div class="group-header">🔔 &nbsp;กลุ่มที่ 4 — แจ้งเตือนและบันทึก &nbsp;<small style="font-weight:400;opacity:.7">(notifications · audit_logs)</small></div>
+    <div class="group-body">
+
+      <div class="tname">notifications &nbsp;—&nbsp; การแจ้งเตือนใน Dashboard</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">UUID</td><td><span class="badge pk">PK</span> <span class="badge auto">uuid4</span></td><td class="col-desc">รหัสแจ้งเตือน</td></tr>
+          <tr><td class="col-name">user_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → users</span> <span class="badge nn">NOT NULL</span></td><td class="col-desc">ผู้รับการแจ้งเตือน</td></tr>
+          <tr><td class="col-name">title</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">หัวข้อแจ้งเตือน</td></tr>
+          <tr><td class="col-name">message</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">เนื้อหา</td></tr>
+          <tr><td class="col-name">link</td><td class="col-type">TEXT</td><td></td><td class="col-desc">URL ลิงก์ไปยังรายละเอียด เช่น <code style="font-size:.8rem">/admin/alerts/uuid</code></td></tr>
+          <tr><td class="col-name">is_read</td><td class="col-type">BOOLEAN</td><td><span class="badge def">default false</span></td><td class="col-desc">อ่านแล้วหรือยัง</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now()</span></td><td class="col-desc">วันเวลาที่สร้าง</td></tr>
+        </tbody>
+      </table>
+
+      <div class="tname" style="margin-top:1px">audit_logs &nbsp;—&nbsp; บันทึกการเข้าถึงข้อมูล (PDPA)</div>
+      <table class="dict-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Constraints</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="col-name">id</td><td class="col-type">INTEGER</td><td><span class="badge pk">PK</span> <span class="badge auto">autoincrement</span></td><td class="col-desc">รหัส log</td></tr>
+          <tr><td class="col-name">user_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → users</span></td><td class="col-desc">ผู้ที่กระทำ</td></tr>
+          <tr><td class="col-name">action</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">login · view_alert · update_alert · export_report · ...</td></tr>
+          <tr><td class="col-name">resource</td><td class="col-type">TEXT</td><td></td><td class="col-desc">ทรัพยากรที่ถูกเข้าถึง เช่น <code style="font-size:.8rem">alert:&lt;uuid&gt;</code> หรือ <code style="font-size:.8rem">student:&lt;uuid&gt;</code></td></tr>
+          <tr><td class="col-name">details</td><td class="col-type">JSONB</td><td></td><td class="col-desc">ข้อมูลเพิ่มเติม เช่น before/after values</td></tr>
+          <tr><td class="col-name">ip_address</td><td class="col-type">TEXT</td><td></td><td class="col-desc">IP ของผู้ใช้ขณะกระทำ</td></tr>
+          <tr><td class="col-name">created_at</td><td class="col-type">TIMESTAMPTZ</td><td><span class="badge auto">now()</span></td><td class="col-desc">วันเวลาที่กระทำ</td></tr>
+        </tbody>
+      </table>
+      <div class="note">audit_logs บันทึกทุกการเข้าถึงข้อมูลส่วนตัวนักเรียน เป็นข้อกำหนดตาม PDPA — ห้ามลบ log เหล่านี้</div>
+    </div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       RELATIONSHIPS
+  ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section">Relationships</h2>
+  <div class="diagram-box" style="padding:0;overflow-x:auto">
+    <table class="rel-table">
+      <thead><tr><th>จาก</th><th></th><th>ไปยัง</th><th>Cardinality</th><th>ความหมาย</th></tr></thead>
+      <tbody>
+        <tr><td>affiliations</td><td class="arrow">──→</td><td>districts</td><td class="rel-type">1 : Many</td><td>1 สังกัด มีได้หลายเขตพื้นที่</td></tr>
+        <tr><td>districts</td><td class="arrow">──→</td><td>schools</td><td class="rel-type">1 : Many</td><td>1 เขต มีได้หลายโรงเรียน</td></tr>
+        <tr><td>schools</td><td class="arrow">──→</td><td>students</td><td class="rel-type">1 : Many</td><td>1 โรงเรียน มีได้หลายนักเรียน</td></tr>
+        <tr><td>students</td><td class="arrow">──→</td><td>assessments</td><td class="rel-type">1 : Many</td><td>1 นักเรียน ทำแบบประเมินได้หลายครั้ง</td></tr>
+        <tr><td>assessments</td><td class="arrow">──→</td><td>alerts</td><td class="rel-type">1 : 0–1</td><td>1 ผลประเมิน สร้างได้ 0 หรือ 1 alert</td></tr>
+        <tr><td>students</td><td class="arrow">──→</td><td>alerts</td><td class="rel-type">1 : Many</td><td>1 นักเรียน มีได้หลาย alert (ตลอดเวลา)</td></tr>
+        <tr><td>users</td><td class="arrow">──→</td><td>students</td><td class="rel-type">0–1 : 0–1</td><td>user ที่เป็น student เชื่อมกับ 1 student record</td></tr>
+        <tr><td>users</td><td class="arrow">──→</td><td>alerts.assigned_to</td><td class="rel-type">1 : Many</td><td>1 user รับผิดชอบได้หลาย alert</td></tr>
+        <tr><td>users</td><td class="arrow">──→</td><td>notifications</td><td class="rel-type">1 : Many</td><td>1 user รับได้หลาย notification</td></tr>
+        <tr><td>users</td><td class="arrow">──→</td><td>audit_logs</td><td class="rel-type">1 : Many</td><td>1 user สร้าง log ได้หลายรายการ</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       HIERARCHY
+  ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section">Data Hierarchy</h2>
+  <div class="diagram-box">
+    <pre style="font-family:'Consolas',monospace;font-size:.9rem;line-height:2;color:var(--text)">
+<span style="color:#7c3aed;font-weight:700">affiliations</span>  (สังกัด: สพฐ., อาชีวะ, เอกชน, กศน.)
+  └── <span style="color:#0369a1;font-weight:700">districts</span>  (เขตพื้นที่: สพป.เลย เขต 1–3, สพม.เลย, ...)
+        └── <span style="color:#0891b2;font-weight:700">schools</span>  (โรงเรียน / สถานศึกษา)
+              └── <span style="color:#16a34a;font-weight:700">students</span>  (นักเรียน — AES-256 encrypted national_id)
+                    └── <span style="color:#ca8a04;font-weight:700">assessments</span>  (ผลประเมิน ST5 / PHQA / CDI)
+                          └── <span style="color:#dc2626;font-weight:700">alerts</span>  (แจ้งเตือน → assigned_to user)
+
+<span style="color:#475569;font-weight:700">users</span>  (ผู้ดูแลระบบ + student accounts)
+  ├── → notifications  (แจ้งเตือนใน dashboard)
+  └── → audit_logs     (PDPA — ทุกการเข้าถึงข้อมูล)
+    </pre>
+  </div>
+
+  <p style="margin-top:40px;font-size:.8rem;color:var(--muted);text-align:center">
+    Generated from <code>backend/app/models/db_models.py</code> &nbsp;·&nbsp; LEMCS v1 &nbsp;·&nbsp; 2026-03-28
+  </p>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default', er: { layoutDirection: 'TB', minEntityWidth: 120, entityPadding: 12, useMaxWidth: true } });
+</script>
+</body>
+</html>
