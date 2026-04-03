@@ -45,12 +45,13 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
         return api(originalRequest);
       } catch {
-        // Refresh failed → redirect to login
+        // Refresh failed → redirect ตาม path
         if (typeof window !== "undefined") {
           localStorage.removeItem("access_token");
           localStorage.removeItem("lemcs_token");
           localStorage.removeItem("refresh_token");
-          window.location.href = "/login";
+          const isAdmin = window.location.pathname.startsWith("/admin");
+          window.location.href = isAdmin ? "/admin-login" : "/login";
         }
         return Promise.reject(error);
       }

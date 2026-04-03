@@ -508,10 +508,81 @@ async def toggle_user_active(
 
 from fastapi import UploadFile, File
 from fastapi.responses import Response as FastAPIResponse
+from typing import Optional
 from app.services.import_service import (
     parse_csv, parse_excel,
-    bulk_import_students, bulk_import_schools
+    bulk_import_students, bulk_import_schools,
+    smart_parse_excel, smart_bulk_import_students,
 )
+
+
+# ──────────────────────────────────────────
+# Smart Import (ไม่ต้องใช้ Template)
+# ──────────────────────────────────────────
+
+@router.post("/import/smart-preview")
+async def smart_import_preview(
+    file: UploadFile = File(...),
+    current_user = Depends(require_role("systemadmin", "schooladmin")),
+):
+    """
+    Smart Preview — อ่านไฟล์ Excel จากโรงเรียน (ไม่ต้องใช้ template)
+    Auto-detect header row + fuzzy column mapping
+    Returns: metadata, detected column mapping, preview 5 แถวแรก
+    """
+    content = await file.read()
+    filename = file.filename or ""
+    if not (filename.endswith(".xlsx") or filename.endswith(".xls")):
+        raise HTTPException(400, "Smart Import รองรับเฉพาะไฟล์ .xlsx และ .xls เท่านั้น")
+    return smart_parse_excel(content)
+
+
+class SmartImportConfirmBody(BaseModel):
+    school_id: int
+    # col_mapping_override: {field_name: col_index} ถ้า Admin ต้องการแก้ไข mapping
+    col_mapping_override: Optional[dict[str, Optional[int]]] = None
+
+
+@router.post("/import/smart-confirm")
+async def smart_import_confirm(
+    file: UploadFile = File(...),
+    school_id: int = Query(..., description="ID ของโรงเรียนที่จะ import"),
+    current_user = Depends(require_role("systemadmin", "schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Smart Import Confirm — นำเข้าข้อมูลจริง
+    - รับ Excel file + school_id
+    - Auto-detect header + map columns
+    - Validate, encrypt national_id, Insert/Upsert students
+    """
+    # schooladmin สามารถ import ได้เฉพาะโรงเรียนตัวเอง
+    if current_user.role == "schooladmin" and current_user.school_id != school_id:
+        raise HTTPException(403, "คุณสามารถ import ได้เฉพาะโรงเรียนของคุณเท่านั้น")
+
+    # ตรวจสอบว่า school_id มีอยู่จริง
+    school_result = await db.execute(select(School).where(School.id == school_id))
+    school = school_result.scalar_one_or_none()
+    if not school:
+        raise HTTPException(404, f"ไม่พบโรงเรียน ID={school_id}")
+
+    content = await file.read()
+    filename = file.filename or ""
+    if not (filename.endswith(".xlsx") or filename.endswith(".xls")):
+        raise HTTPException(400, "Smart Import รองรับเฉพาะไฟล์ .xlsx และ .xls เท่านั้น")
+
+    result = await smart_bulk_import_students(
+        db=db,
+        content=content,
+        school_id=school_id,
+    )
+    result["school_name"] = school.name
+    return result
+
+
+# ──────────────────────────────────────────
+# Legacy Import: CSV / Excel (ต้องใช้ Template)
+# ──────────────────────────────────────────
 
 @router.post("/import/students")
 async def import_students(
@@ -528,6 +599,7 @@ async def import_students(
     result = await bulk_import_students(db, rows)
     return result
 
+
 @router.post("/import/schools")
 async def import_schools(
     file: UploadFile = File(...),
@@ -543,12 +615,13 @@ async def import_schools(
     result = await bulk_import_schools(db, rows)
     return result
 
+
 @router.post("/import/preview")
 async def preview_import(
     file: UploadFile = File(...),
     current_user = Depends(require_role("systemadmin")),
 ):
-    """ดู 5 แถวแรกก่อน import จริง"""
+    """Legacy: ดู 5 แถวแรกก่อน import (ต้องใช้ template)"""
     content = await file.read()
     filename = file.filename or ""
     if filename.endswith(".xlsx") or filename.endswith(".xls"):
@@ -557,12 +630,13 @@ async def preview_import(
         rows = parse_csv(content)
     return {"total_rows": len(rows), "preview": rows[:5], "columns": list(rows[0].keys()) if rows else []}
 
+
 @router.get("/import/template/{data_type}")
 async def download_template(
     data_type: str,
     current_user = Depends(require_role("systemadmin")),
 ):
-    """ดาวน์โหลด CSV template"""
+    """ดาวน์โหลด CSV template (สำหรับ legacy import)"""
     templates = {
         "students": "student_code,first_name,last_name,gender,grade,classroom,school_id,birthdate,national_id\nSTD0001,สมชาย,ใจดี,male,ม.1,1,7,2010-01-15,\n",
         "schools":  "name,district_id,school_type\nโรงเรียนใหม่,2,มัธยมศึกษา\n",
