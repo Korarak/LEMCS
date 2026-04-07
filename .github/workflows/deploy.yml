@@ -64,8 +64,7 @@ jobs:
           username: ${{ secrets.SERVER_SSH_USERNAME }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "backend/init.sql"
-          target: "/home/${{ secrets.SERVER_SSH_USERNAME }}/lemcs2569/backend/"
-          strip_components: 1
+          target: "/home/${{ secrets.SERVER_SSH_USERNAME }}/lemcs2569/"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
