@@ -140,7 +140,7 @@ export default function LoginPage() {
     setError("");
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/auth/login/bypass`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800"}/api/auth/login/bypass`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

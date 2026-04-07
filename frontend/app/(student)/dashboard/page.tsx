@@ -49,7 +49,7 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async (authToken: string) => {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800";
       const [resAvail, resHistory] = await Promise.all([
         fetch(`${baseUrl}/api/assessments/available`, { headers: { "Authorization": `Bearer ${authToken}` } }),
         fetch(`${baseUrl}/api/assessments/history`, { headers: { "Authorization": `Bearer ${authToken}` } })

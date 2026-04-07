@@ -2,12 +2,10 @@ version: "3.9"
 
 services:
   # ───────────────────────────────────────────
-  # Frontend — Next.js 14 PWA
+  # Frontend — Next.js 14 PWA (Production Image)
   # ───────────────────────────────────────────
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/loei-banrakrod-frontend:latest
     ports:
       - "6300:3000"
     environment:
@@ -23,12 +21,10 @@ services:
       retries: 3
 
   # ───────────────────────────────────────────
-  # Backend — FastAPI
+  # Backend — FastAPI (Production Image)
   # ───────────────────────────────────────────
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/loei-banrakrod-backend:latest
     ports:
       - "6800:8000"
     env_file: .env
@@ -39,7 +35,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     deploy:
-      replicas: 1    # เพิ่มเป็น 4 ใน production
+      replicas: 4    # Set for production scale
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
@@ -164,9 +160,7 @@ services:
   # Backup Scheduler
   # ───────────────────────────────────────────
   backup-scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/loei-banrakrod-backend:latest
     command: python scripts/run_scheduler.py
     env_file: .env
     depends_on:

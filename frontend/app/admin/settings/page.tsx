@@ -10,7 +10,7 @@ export default function SettingsPage() {
     { username: "school_ml",   role: "schooladmin",     scope: "รร.เมืองเลย" },
   ];
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800/api";
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">

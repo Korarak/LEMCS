@@ -29,7 +29,7 @@ export default function AssessmentPage() {
     if (Object.keys(currentResponses).length === 0) return;
     try {
       const token = localStorage.getItem("lemcs_token");
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/assessments/autosave`, {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800"}/api/assessments/autosave`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -69,7 +69,7 @@ export default function AssessmentPage() {
     setIsSubmitting(true);
     try {
       const token = localStorage.getItem("lemcs_token");
-      const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/assessments/submit`;
+      const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800"}/api/assessments/submit`;
       
       const res = await fetch(url, {
         method: "POST",

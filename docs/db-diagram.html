@@ -100,7 +100,7 @@
 <div class="wrapper">
 
   <h1>LEMCS — Database Schema</h1>
-  <p class="subtitle">Loei Educational MindCare System &nbsp;·&nbsp; PostgreSQL 16 &nbsp;·&nbsp; 9 Tables &nbsp;·&nbsp; Updated 2026-03-28</p>
+  <p class="subtitle">Loei Educational MindCare System &nbsp;·&nbsp; PostgreSQL 16 &nbsp;·&nbsp; 9 Tables &nbsp;·&nbsp; Updated 2026-04-04</p>
 
   <!-- ══════════════════════════════════════════════════════════
        ER DIAGRAM
@@ -279,7 +279,7 @@ erDiagram
           <tr><td class="col-name">last_name</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc">นามสกุล</td></tr>
           <tr><td class="col-name">gender</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">male · female</td></tr>
           <tr><td class="col-name">birthdate</td><td class="col-type">DATE</td><td></td><td class="col-desc">วันเดือนปีเกิด (ใช้ยืนยันตัวตนเมื่อล็อกอิน)</td></tr>
-          <tr><td class="col-name">grade</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">ป.4 · ป.5 · ป.6 · ม.1–6 · ปวช.1–3</td></tr>
+          <tr><td class="col-name">grade</td><td class="col-type">TEXT</td><td></td><td class="col-desc col-enum">ม.1–6 · ปวช.1–3 · ปวส.1–2</td></tr>
           <tr><td class="col-name">classroom</td><td class="col-type">TEXT</td><td></td><td class="col-desc">ห้อง เช่น "1", "2", "3"</td></tr>
           <tr><td class="col-name">school_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → schools</span></td><td class="col-desc">โรงเรียนที่นักเรียนสังกัด</td></tr>
           <tr><td class="col-name">is_active</td><td class="col-type">BOOLEAN</td><td><span class="badge def">default true</span></td><td class="col-desc">สถานะบัญชี (false = ถูกระงับ)</td></tr>
@@ -296,7 +296,7 @@ erDiagram
           <tr><td class="col-name">student_id</td><td class="col-type">UUID</td><td><span class="badge fk">FK → students</span></td><td class="col-desc">เชื่อมกับ students (เฉพาะ role = student)</td></tr>
           <tr><td class="col-name">username</td><td class="col-type">TEXT</td><td><span class="badge uk">UNIQUE</span></td><td class="col-desc">ชื่อผู้ใช้สำหรับ admin login</td></tr>
           <tr><td class="col-name">hashed_password</td><td class="col-type">TEXT</td><td></td><td class="col-desc">รหัสผ่าน — bcrypt hash</td></tr>
-          <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">systemadmin · superadmin · commissionadmin · schooladmin · student</td></tr>
+          <tr><td class="col-name">role</td><td class="col-type">TEXT</td><td><span class="badge nn">NOT NULL</span></td><td class="col-desc col-enum">student · teacher · counselor · schooladmin · district_admin · province_admin · superadmin</td></tr>
           <tr><td class="col-name">school_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → schools</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ schooladmin</td></tr>
           <tr><td class="col-name">affiliation_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → affiliations</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ commissionadmin (สังกัด)</td></tr>
           <tr><td class="col-name">district_id</td><td class="col-type">INTEGER</td><td><span class="badge fk">FK → districts</span></td><td class="col-desc">กำหนดขอบเขตข้อมูล — ใช้สำหรับ commissionadmin (เขต)</td></tr>
@@ -359,10 +359,10 @@ erDiagram
           <div class="score-card">
             <h4>ST-5 &nbsp;<small style="font-weight:400;color:var(--muted)">ความเครียด (5 ข้อ, 0–15 คะแนน)</small></h4>
             <table><tbody>
-              <tr><td>0 – 4</td><td class="lv-normal">ปกติ (normal)</td></tr>
-              <tr><td>5 – 7</td><td class="lv-mild">เครียดเล็กน้อย (mild)</td></tr>
-              <tr><td>8 – 9</td><td class="lv-moderate">เครียดปานกลาง (moderate)</td></tr>
-              <tr><td>10 – 15</td><td class="lv-severe">เครียดมาก (severe)</td></tr>
+              <tr><td>0 – 4</td><td class="lv-normal">ไม่มีความเครียด (normal)</td></tr>
+              <tr><td>5 – 7</td><td class="lv-mild">เครียดน้อย (mild)</td></tr>
+              <tr><td>8 – 11</td><td class="lv-moderate">เครียดปานกลาง (moderate)</td></tr>
+              <tr><td>12 – 15</td><td class="lv-severe">เครียดมาก (severe)</td></tr>
             </tbody></table>
           </div>
           <div class="score-card">
@@ -378,10 +378,8 @@ erDiagram
           <div class="score-card">
             <h4>CDI &nbsp;<small style="font-weight:400;color:var(--muted)">ซึมเศร้าเด็ก (27 ข้อ, 0–54 คะแนน)</small></h4>
             <table><tbody>
-              <tr><td>0 – 12</td><td class="lv-normal">ปกติ (normal)</td></tr>
-              <tr><td>13 – 19</td><td class="lv-mild">เล็กน้อย (mild)</td></tr>
-              <tr><td>20 – 29</td><td class="lv-moderate">ปานกลาง (moderate)</td></tr>
-              <tr><td>30 – 54</td><td class="lv-severe">รุนแรง (severe)</td></tr>
+              <tr><td>0 – 14</td><td class="lv-normal">ปกติ (normal)</td></tr>
+              <tr><td>15 – 54</td><td class="lv-severe">มีภาวะซึมเศร้าที่มีนัยสำคัญ (clinical)</td></tr>
             </tbody></table>
             <div style="font-size:.75rem;color:var(--muted);margin-top:6px">* บางข้อใช้ inverted scoring</div>
           </div>
@@ -486,7 +484,7 @@ erDiagram
   </div>
 
   <p style="margin-top:40px;font-size:.8rem;color:var(--muted);text-align:center">
-    Generated from <code>backend/app/models/db_models.py</code> &nbsp;·&nbsp; LEMCS v1 &nbsp;·&nbsp; 2026-03-28
+    Generated from <code>backend/app/models/db_models.py</code> &nbsp;·&nbsp; LEMCS v1 &nbsp;·&nbsp; 2026-04-04
   </p>
 </div>
 

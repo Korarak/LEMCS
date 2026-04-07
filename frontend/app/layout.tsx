@@ -11,6 +11,13 @@ export const metadata: Metadata = {
   title: "LEMCS — ระบบประเมินสุขภาพจิตนักเรียน จ.เลย",
   description: "ระบบสำรวจและประเมินความเครียดและภาวะซึมเศร้าในนักเรียน จ.เลย",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+  },
 };
 
 export const viewport = {

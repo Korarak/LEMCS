@@ -15,7 +15,7 @@ export default function ResultPage() {
     const fetchResult = async () => {
       try {
         const token = localStorage.getItem("lemcs_token");
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/assessments/result/${params?.id}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800"}/api/assessments/result/${params?.id}`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }

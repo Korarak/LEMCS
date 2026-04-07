@@ -80,13 +80,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 | Service | URL | Notes |
 |---|---|---|
-| Frontend (Next.js) | http://localhost:3000 | Hot reload — changes appear instantly |
-| Backend (FastAPI) | http://localhost:8000 | Auto-reload on Python file save |
-| API Docs (Swagger) | http://localhost:8000/docs | Interactive API docs |
-| PostgreSQL | localhost:5432 | Direct DB access available |
-| MinIO Console | http://localhost:9001 | Username/password from `.env` |
-| Grafana | http://localhost:3001 | admin / `GRAFANA_PASSWORD` |
-| Prometheus | http://localhost:9090 | Metrics scraper |
+| Frontend (Next.js) | http://localhost:6300 | Hot reload — changes appear instantly |
+| Backend (FastAPI) | http://localhost:6800 | Auto-reload on Python file save |
+| API Docs (Swagger) | http://localhost:6800/docs | Interactive API docs |
+| PostgreSQL | localhost:6432 | Direct DB access available |
+| MinIO Console | http://localhost:6901 | Username/password from `.env` |
+| Grafana | http://localhost:6301 | admin / `GRAFANA_PASSWORD` |
+| Prometheus | http://localhost:6090 | Metrics scraper |
 
 ### Test credentials (auto-seeded on startup)
 
@@ -198,7 +198,7 @@ npm install
 npm run dev
 ```
 
-Frontend will be available at http://localhost:3000.
+Frontend will be available at http://localhost:3000 (local dev without Docker uses native ports).
 
 ---
 
@@ -354,7 +354,7 @@ cd backend
 source venv/bin/activate   # or venv\Scripts\activate on Windows
 
 # Check API health
-curl http://localhost:8000/health
+curl http://localhost:6800/health
 ```
 
 ---
@@ -374,7 +374,7 @@ curl http://localhost:8000/health
 | `MINIO_ENDPOINT` | ✅ | `minio:9000` | MinIO host:port |
 | `MINIO_ACCESS_KEY` | ✅ | `minioadmin` | MinIO username |
 | `MINIO_SECRET_KEY` | ✅ | strong password | MinIO password |
-| `API_BASE_URL` | ✅ | `http://localhost:8000` | Public API URL (used by frontend) |
+| `API_BASE_URL` | ✅ | `http://localhost:6800` | Public API URL (used by frontend) |
 | `DEBUG` | | `True` / `False` | Enables `/docs` when True |
 | `GRAFANA_PASSWORD` | | `admin` | Grafana admin password |
 | `LINE_NOTIFY_TOKEN` | | — | LINE Notify integration (optional) |
@@ -390,7 +390,7 @@ Browser / Mobile
       ▼
 ┌─────────────┐       ┌──────────────────┐
 │  Next.js    │──────▶│  FastAPI         │
-│  :3000      │       │  :8000           │
+│  :6300      │       │  :6800           │
 │  (PWA)      │       │  (4 workers)     │
 └─────────────┘       └────────┬─────────┘
                                │
@@ -398,7 +398,7 @@ Browser / Mobile
               ▼                ▼                ▼
      ┌──────────────┐  ┌─────────────┐  ┌─────────────┐
      │  PgBouncer   │  │  Redis 7    │  │  MinIO      │
-     │  :5432       │  │  (cache)    │  │  :9000/9001 │
+     │  :6432       │  │  (cache)    │  │  :6900/6901 │
      └──────┬───────┘  └─────────────┘  └─────────────┘
             ▼
      ┌──────────────┐
@@ -414,9 +414,9 @@ Browser / Mobile
 ### Port already in use
 
 ```bash
-# Find what's using port 3000
-netstat -ano | findstr :3000   # Windows
-lsof -i :3000                  # macOS/Linux
+# Find what's using port 6300
+netstat -ano | findstr :6300   # Windows
+lsof -i :6300                  # macOS/Linux
 
 # Kill the process (Windows)
 taskkill /PID <PID> /F
@@ -473,3 +473,49 @@ cp .env.example .env
 docker compose build --no-cache
 docker compose up -d
 ```
+
+---
+
+## 10. CI/CD Deployment (GitHub Actions)
+
+The system is configured for automated deployment via GitHub Actions.
+
+### Workflow File
+- Location: `.github/workflows/deploy.yml`
+- Triggers: Push to `main` branch.
+
+### Required GitHub Secrets
+Before the workflow can run successfully, you must configure the following secrets in your GitHub Repository settings (**Settings > Secrets and variables > Actions**):
+
+| Secret Name | Description | Example |
+|---|---|---|
+| `REGISTRY_URL` | Docker Registry URL | `registry.loeitech.org` |
+| `REGISTRY_USERNAME` | Registry Username | `admin` |
+| `REGISTRY_PASSWORD` | Registry Password | `********` |
+| `SERVER_SSH_HOST` | Production Server IP/Domain | `1.2.3.4` |
+| `SERVER_SSH_PORT` | SSH Port | `22` |
+| `SERVER_SSH_USERNAME` | SSH User | `root` |
+| `SERVER_SSH_KEY` | Private SSH Key (ED25519/RSA) | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+| `NEXT_PUBLIC_API_URL` | Public API URL for Frontend | `https://lemcs.loeitech.ac.th` |
+
+### Deployment Architecture
+1. **Build**: GitHub Actions builds Docker images for Frontend and Backend.
+2. **Push**: Images are pushed to `registry.loeitech.org`.
+3. **Deploy**: GitHub Actions connects to your server via SSH, pulls the latest images using `docker-compose.prod.yml`, and restarts the services.
+
+---
+
+## 11. Subdomain Design (loeitech.ac.th)
+
+For production deployment, we recommend the following professional subdomain structure for the LEMCS project:
+
+| Component | Proposed URL | Description |
+|---|---|---|
+| **User Portal** | `lemcs.loeitech.ac.th` | Main application for students and staff. |
+| **API Backend** | `api-lemcs.loeitech.ac.th` | FastAPI core services. |
+| **Storage API** | `s3-lemcs.loeitech.ac.th` | Public-facing MinIO API for file/image delivery. |
+| **Storage Admin** | `s3-admin.loeitech.ac.th` | Restricted access to MinIO Web Console. |
+| **Monitoring** | `monitor-lemcs.loeitech.ac.th` | Restricted access to Grafana Dashboards. |
+
+> [!NOTE]
+> **DNS Setup**: You will need to create A records or CNAMEs pointing to your Production Server IP for each of these subdomains.

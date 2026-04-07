@@ -36,11 +36,11 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### Service Endpoints
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:3000 |
-| API + Swagger | http://localhost:8000/docs |
-| MinIO Console | http://localhost:9001 |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
+| Frontend | http://localhost:6300 |
+| API + Swagger | http://localhost:6800/docs |
+| MinIO Console | http://localhost:6901 |
+| Grafana | http://localhost:6301 |
+| Prometheus | http://localhost:6090 |
 
 ### Test Credentials (seeded)
 - Student: code `12345`, birthdate `2000-01-01`, national ID `1234567890123`
