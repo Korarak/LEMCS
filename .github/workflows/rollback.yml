@@ -1,0 +1,35 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to rollback to (e.g., a1b2c3d4)'
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Rollback Prod VM via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          username: ${{ secrets.PROD_SSH_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd ~/lemcs2569
+
+            echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ secrets.REGISTRY_URL }} \
+              -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin
+
+            export REGISTRY_URL=${{ secrets.REGISTRY_URL }}
+            export IMAGE_TAG=${{ github.event.inputs.image_tag }}
+
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            echo "Rolled back to image tag: $IMAGE_TAG"
