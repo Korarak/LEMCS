@@ -95,6 +95,12 @@ jobs:
             export IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
 
             docker-compose -f docker-compose.prod.yml pull
-            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Clean restart: prevents hash-prefixed container names on recreate
+            docker-compose -f docker-compose.prod.yml down --remove-orphans
+            docker-compose -f docker-compose.prod.yml up -d
+            # Second pass: bring up any services that lost the postgres-healthy race
+            sleep 15
+            docker-compose -f docker-compose.prod.yml up -d
 
             echo "Deployed prod image tag: $IMAGE_TAG"
