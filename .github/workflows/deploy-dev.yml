@@ -94,6 +94,11 @@ jobs:
             export IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
 
             docker-compose -f docker-compose.staging.yml pull
+
+            # First pass: start infra (postgres needs time to init on first boot)
+            docker-compose -f docker-compose.staging.yml up -d --remove-orphans || true
+            sleep 10
+            # Second pass: bring up any services that failed due to postgres not ready
             docker-compose -f docker-compose.staging.yml up -d --remove-orphans
 
             echo "Deployed dev image tag: $IMAGE_TAG"
