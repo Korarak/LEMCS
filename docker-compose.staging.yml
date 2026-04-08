@@ -1,11 +1,11 @@
 version: "3.9"
 
 # Dev/Staging VM — พอร์ต 3100/8100 เพื่อไม่ชนกับ Prod (3000/8000)
+# หมายเหตุ: ไม่ใช้ container_name เพื่อหลีกเลี่ยง hash-prefix ใน docker-compose v1
 
 services:
   frontend:
     image: ${REGISTRY_URL}/lemcs-frontend:${IMAGE_TAG:-dev-latest}
-    container_name: lemcs-dev-frontend
     ports:
       - "3100:3000"
     environment:
@@ -17,7 +17,6 @@ services:
 
   backend:
     image: ${REGISTRY_URL}/lemcs-backend:${IMAGE_TAG:-dev-latest}
-    container_name: lemcs-dev-backend
     ports:
       - "8100:8000"
     env_file: .env
@@ -41,7 +40,6 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: lemcs-dev-postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -58,7 +56,6 @@ services:
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
-    container_name: lemcs-dev-pgbouncer
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -76,7 +73,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: lemcs-dev-redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redisdata:/data
@@ -89,7 +85,6 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: lemcs-dev-minio
     command: server /data --console-address ":9001"
     volumes:
       - miniodata:/data
@@ -107,7 +102,6 @@ services:
 
   backup-scheduler:
     image: ${REGISTRY_URL}/lemcs-backend:${IMAGE_TAG:-dev-latest}
-    container_name: lemcs-dev-backup
     command: python scripts/run_scheduler.py
     env_file: .env
     depends_on:

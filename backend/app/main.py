@@ -92,10 +92,12 @@ app = FastAPI(
 
 # CORS
 _cors_origins = [
-    settings.FRONTEND_URL,           # prod/staging domain from env
-    "http://localhost:3000",          # local Next.js dev server
+    settings.FRONTEND_URL,                        # prod/staging domain from env
+    "https://lemcs.loeitech.ac.th",               # production
+    "https://dev.lemcs.loeitech.ac.th",           # staging
+    "http://localhost:3000",                       # local Next.js dev server
     "http://127.0.0.1:3000",
-    "http://localhost:3100",          # staging container port
+    "http://localhost:3100",                       # staging container port
     "http://127.0.0.1:3100",
 ]
 app.add_middleware(
