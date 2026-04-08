@@ -1,32 +1,29 @@
 version: "3.9"
 
-# Dev/Staging VM — ใช้ image tag dev-{sha}, single replica, monitoring เบาลง
+# Dev/Staging VM — พอร์ต 3100/8100 เพื่อไม่ชนกับ Prod (3000/8000)
 
 services:
   frontend:
     image: ${REGISTRY_URL}/lemcs-frontend:${IMAGE_TAG:-dev-latest}
+    container_name: lemcs-dev-frontend
     ports:
-      - "6300:3000"
+      - "3100:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${API_BASE_URL}
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   backend:
     image: ${REGISTRY_URL}/lemcs-backend:${IMAGE_TAG:-dev-latest}
+    container_name: lemcs-dev-backend
     ports:
-      - "6800:8000"
+      - "8100:8000"
     env_file: .env
     depends_on:
       pgbouncer:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -39,10 +36,12 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
   postgres:
     image: postgres:16-alpine
+    container_name: lemcs-dev-postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -59,6 +58,7 @@ services:
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
+    container_name: lemcs-dev-pgbouncer
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -68,20 +68,15 @@ services:
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 200
       DEFAULT_POOL_SIZE: 20
-    ports:
-      - "6432:5432"
+      AUTH_TYPE: scram-sha-256
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   redis:
     image: redis:7-alpine
+    container_name: lemcs-dev-redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redisdata:/data
@@ -94,6 +89,7 @@ services:
 
   minio:
     image: minio/minio:latest
+    container_name: lemcs-dev-minio
     command: server /data --console-address ":9001"
     volumes:
       - miniodata:/data
@@ -101,8 +97,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     ports:
-      - "6900:9000"
-      - "6901:9001"
+      - "9101:9001"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -112,13 +107,12 @@ services:
 
   backup-scheduler:
     image: ${REGISTRY_URL}/lemcs-backend:${IMAGE_TAG:-dev-latest}
+    container_name: lemcs-dev-backup
     command: python scripts/run_scheduler.py
     env_file: .env
     depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - postgres
+      - minio
     restart: unless-stopped
 
 volumes:
