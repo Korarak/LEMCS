@@ -67,6 +67,17 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Copy compose file to Prod VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          username: ${{ secrets.PROD_SSH_USERNAME }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "~/lemcs2569/"
+          strip_components: 0
+
       - name: Deploy to Prod VM via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -83,7 +94,7 @@ jobs:
             export REGISTRY_URL=${{ secrets.REGISTRY_URL }}
             export IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
 
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker-compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 
             echo "Deployed prod image tag: $IMAGE_TAG"

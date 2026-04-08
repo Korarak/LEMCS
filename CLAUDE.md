@@ -33,14 +33,20 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Service Endpoints
+### Service Endpoints (local dev)
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:6300 |
-| API + Swagger | http://localhost:6800/docs |
-| MinIO Console | http://localhost:6901 |
-| Grafana | http://localhost:6301 |
-| Prometheus | http://localhost:6090 |
+| Frontend | http://localhost:3000 |
+| API + Swagger | http://localhost:8000/docs |
+| MinIO Console | http://localhost:9001 |
+| Grafana | http://localhost:3001 |
+
+### Server Domains (via Nginx Proxy Manager)
+| Environment | Frontend | API | Grafana | MinIO Console |
+|-------------|----------|-----|---------|---------------|
+| Prod | lemcs.loeitech.ac.th → :3000 | api-lemcs.loeitech.ac.th → :8000 | grafana-lemcs.loeitech.ac.th → :3001 | minio-lemcs.loeitech.ac.th → :9001 |
+| Dev/Staging | dev.lemcs.loeitech.ac.th → :3100 | dev-api.lemcs.loeitech.ac.th → :8100 | — | dev-minio.lemcs.loeitech.ac.th → :9101 |
+| Infra | portainer.loeitech.ac.th → :9000 | registry.loeitech.org → :5000 | — | — |
 
 ### Test Credentials (seeded)
 - Student: code `12345`, birthdate `2000-01-01`, national ID `1234567890123`

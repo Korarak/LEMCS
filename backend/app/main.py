@@ -11,9 +11,15 @@ from app.models.db_models import Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create tables on startup (for fresh DBs)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Auto-create tables on startup (for fresh DBs).
+    # Catch IntegrityError: with --workers > 1, multiple workers race to create tables;
+    # the loser gets a pg_type duplicate-key error which is safe to ignore.
+    from sqlalchemy.exc import IntegrityError
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except IntegrityError:
+        pass  # Another worker already created the tables
 
     # Migrate existing DB: add new RBAC columns if they don't exist
     from sqlalchemy import text as sa_text
@@ -85,9 +91,18 @@ app = FastAPI(
 )
 
 # CORS
+_cors_origins = [
+    settings.FRONTEND_URL,                        # prod/staging domain from env
+    "https://lemcs.loeitech.ac.th",               # production
+    "https://dev.lemcs.loeitech.ac.th",           # staging
+    "http://localhost:3000",                       # local Next.js dev server
+    "http://127.0.0.1:3000",
+    "http://localhost:3100",                       # staging container port
+    "http://127.0.0.1:3100",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:6300", "http://127.0.0.1:6300"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -63,6 +63,20 @@ jobs:
     needs: build-and-push
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy compose file to Dev VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          port: ${{ secrets.DEV_SSH_PORT }}
+          username: ${{ secrets.DEV_SSH_USERNAME }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          source: "docker-compose.staging.yml"
+          target: "~/lemcs-dev/"
+          strip_components: 0
+
       - name: Deploy to Dev VM via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -79,7 +93,13 @@ jobs:
             export REGISTRY_URL=${{ secrets.REGISTRY_URL }}
             export IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
 
-            docker compose -f docker-compose.staging.yml pull
-            docker compose -f docker-compose.staging.yml up -d --remove-orphans
+            docker-compose -f docker-compose.staging.yml pull
+
+            # Clean restart: down removes orphan/hash-prefixed containers, up recreates cleanly
+            docker-compose -f docker-compose.staging.yml down --remove-orphans
+            docker-compose -f docker-compose.staging.yml up -d
+            # Second pass: bring up any services that lost the postgres-healthy race
+            sleep 15
+            docker-compose -f docker-compose.staging.yml up -d
 
             echo "Deployed dev image tag: $IMAGE_TAG"
