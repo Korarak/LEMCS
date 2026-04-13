@@ -3,6 +3,8 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -17,6 +19,7 @@ const INIT_FORM = { student_code: "", first_name: "", last_name: "", gender: "ma
 const GRADES = ["ป.4","ป.5","ป.6","ม.1","ม.2","ม.3","ม.4","ม.5","ม.6","ปวช.1","ปวช.2","ปวช.3"];
 
 export default function StudentsPage() {
+  const { toast } = useToast();
   const { data: schools } = useSWR("/admin/schools", fetcher);
   const [search, setSearch] = useState("");
   const [filterSchool, setFilterSchool] = useState("");
@@ -26,6 +29,7 @@ export default function StudentsPage() {
   const [editing, setEditing] = useState<Student | null>(null);
   const [form, setForm] = useState({ ...INIT_FORM });
   const [saving, setSaving] = useState(false);
+  const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
   const PAGE_SIZE = 20;
 
   const params = new URLSearchParams();
@@ -49,7 +53,10 @@ export default function StudentsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.student_code || !form.first_name || !form.last_name) return alert("กรุณากรอกข้อมูลที่จำเป็น");
+    if (!form.student_code || !form.first_name || !form.last_name) {
+      toast("กรุณากรอกข้อมูลที่จำเป็น", "warning");
+      return;
+    }
     setSaving(true);
     try {
       const body = { ...form, school_id: form.school_id ? Number(form.school_id) : undefined };
@@ -57,14 +64,28 @@ export default function StudentsPage() {
       else if (editing) await api.put(`/admin/students/${editing.id}`, body);
       setModal(null);
       mutate(`/admin/students?${params}`);
-    } catch (e: any) { alert(e?.response?.data?.detail || "เกิดข้อผิดพลาด"); }
-    finally { setSaving(false); }
+      toast(modal === "add" ? "เพิ่มนักเรียนสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+    } finally { setSaving(false); }
   };
 
-  const handleToggle = async (s: Student) => {
-    if (!confirm(`${s.is_active ? "ปิด" : "เปิด"}บัญชี ${s.first_name} ${s.last_name}?`)) return;
-    await api.delete(`/admin/students/${s.id}`);
-    mutate(`/admin/students?${params}`);
+  const handleToggle = async (s: Student) => setToggleTarget(s);
+
+  const doToggle = async () => {
+    if (!toggleTarget) return;
+    try {
+      await api.delete(`/admin/students/${toggleTarget.id}`);
+      mutate(`/admin/students?${params}`);
+      toast(
+        toggleTarget.is_active
+          ? `ปิดบัญชี ${toggleTarget.first_name} ${toggleTarget.last_name} แล้ว`
+          : `เปิดบัญชี ${toggleTarget.first_name} ${toggleTarget.last_name} แล้ว`,
+        toggleTarget.is_active ? "warning" : "success",
+      );
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+    } finally { setToggleTarget(null); }
   };
 
   return (
@@ -215,6 +236,16 @@ export default function StudentsPage() {
           <form method="dialog" className="modal-backdrop"><button onClick={() => setModal(null)}>close</button></form>
         </dialog>
       )}
+
+      <ConfirmModal
+        open={!!toggleTarget}
+        title={toggleTarget?.is_active ? "ปิดบัญชีนักเรียน" : "เปิดบัญชีนักเรียน"}
+        message={`ต้องการ${toggleTarget?.is_active ? "ปิด" : "เปิด"}บัญชี ${toggleTarget?.first_name} ${toggleTarget?.last_name}?`}
+        confirmLabel={toggleTarget?.is_active ? "ปิดบัญชี" : "เปิดบัญชี"}
+        confirmClass={toggleTarget?.is_active ? "btn-error" : "btn-success"}
+        onConfirm={doToggle}
+        onCancel={() => setToggleTarget(null)}
+      />
     </div>
   );
 }

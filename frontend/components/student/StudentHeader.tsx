@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function StudentHeader() {
   const router = useRouter();
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
-  const handleLogout = () => {
+  const doLogout = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("lemcs_token");
       localStorage.removeItem("access_token");
@@ -74,7 +77,7 @@ export default function StudentHeader() {
           </div>
 
           <button
-            onClick={handleLogout}
+            onClick={() => setConfirmLogout(true)}
             style={{
               background: "transparent",
               border: "1px solid rgba(99,102,241,0.3)",
@@ -100,6 +103,16 @@ export default function StudentHeader() {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmLogout}
+        title="ออกจากระบบ"
+        message="ต้องการออกจากระบบใช่หรือไม่?"
+        confirmLabel="ออกจากระบบ"
+        confirmClass="btn-error"
+        onConfirm={doLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </header>
   );
 }

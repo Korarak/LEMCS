@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ToastProvider } from "@/components/ui/Toast";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 const NAV_SECTIONS = [
   {
@@ -35,6 +36,7 @@ const NAV_SECTIONS = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   return (
     <ToastProvider>
@@ -102,12 +104,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="p-3 border-t border-base-200">
             <button
               className="flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-error hover:bg-error/10 transition-colors"
-              onClick={() => {
-                localStorage.removeItem("access_token");
-                localStorage.removeItem("lemcs_token");
-                localStorage.removeItem("refresh_token");
-                window.location.href = "/admin-login";
-              }}
+              onClick={() => setConfirmLogout(true)}
             >
               <span>🚪</span>
               <span>ออกจากระบบ</span>
@@ -116,6 +113,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </aside>
       </div>
     </div>
+      <ConfirmModal
+        open={confirmLogout}
+        title="ออกจากระบบ"
+        message="ต้องการออกจากระบบใช่หรือไม่?"
+        confirmLabel="ออกจากระบบ"
+        confirmClass="btn-error"
+        onConfirm={() => {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("lemcs_token");
+          localStorage.removeItem("refresh_token");
+          window.location.href = "/admin-login";
+        }}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </ToastProvider>
   );
 }

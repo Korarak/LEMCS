@@ -12,6 +12,7 @@ services:
       - "6300:3000"
     environment:
       - NEXT_PUBLIC_API_URL=${API_BASE_URL}
+      - DISABLE_PWA=${DISABLE_PWA:-false}
     restart: unless-stopped
     depends_on:
       backend:
@@ -85,6 +86,7 @@ services:
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 50
+      AUTH_TYPE: plain
     ports:
       - "6432:5432"
     depends_on:

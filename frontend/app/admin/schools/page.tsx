@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -20,6 +21,7 @@ const TYPE_BADGE: Record<string, string> = {
 };
 
 export default function SchoolsPage() {
+  const { toast } = useToast();
   const { data: schools,      isLoading } = useSWR<School[]>("/admin/schools", fetcher);
   const { data: districts     = [] }      = useSWR<District[]>("/admin/districts", fetcher);
   const { data: affiliations  = [] }      = useSWR<Affiliation[]>("/admin/affiliations", fetcher);
@@ -99,8 +101,8 @@ export default function SchoolsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name)        return alert("กรุณากรอกชื่อสถานศึกษา");
-    if (!form.district_id) return alert("กรุณาเลือกเขตพื้นที่");
+    if (!form.name)        { toast("กรุณากรอกชื่อสถานศึกษา", "warning"); return; }
+    if (!form.district_id) { toast("กรุณาเลือกเขตพื้นที่", "warning"); return; }
     setSaving(true);
     try {
       const body = { name: form.name, district_id: form.district_id, school_type: form.school_type || null };
@@ -111,8 +113,9 @@ export default function SchoolsPage() {
       }
       setModalOpen(false);
       mutate("/admin/schools");
+      toast(editing ? "แก้ไขโรงเรียนสำเร็จ" : "เพิ่มโรงเรียนสำเร็จ", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
     } finally {
       setSaving(false);
     }

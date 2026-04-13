@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { api } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -13,6 +14,7 @@ interface District    { id: number; name: string; affiliation_id: number; }
 function AffiliationSection({
   affiliations, isLoading,
 }: { affiliations: Affiliation[]; isLoading: boolean }) {
+  const { toast } = useToast();
   const [modal,   setModal]   = useState<"add" | "edit" | null>(null);
   const [target,  setTarget]  = useState<Affiliation | null>(null);
   const [name,    setName]    = useState("");
@@ -23,7 +25,7 @@ function AffiliationSection({
   const openEdit = (a: Affiliation) => { setTarget(a); setName(a.name); setModal("edit"); };
 
   const handleSave = async () => {
-    if (!name.trim()) return alert("กรุณากรอกชื่อสังกัด");
+    if (!name.trim()) { toast("กรุณากรอกชื่อสังกัด", "warning"); return; }
     setSaving(true);
     try {
       if (modal === "add") {
@@ -34,8 +36,9 @@ function AffiliationSection({
       setModal(null);
       globalMutate("/admin/affiliations");
       globalMutate("/admin/districts");
+      toast(modal === "add" ? "เพิ่มสังกัดสำเร็จ" : "แก้ไขสังกัดสำเร็จ", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
     } finally { setSaving(false); }
   };
 
@@ -46,8 +49,9 @@ function AffiliationSection({
       setConfirm(null);
       globalMutate("/admin/affiliations");
       globalMutate("/admin/districts");
+      toast("ลบสังกัดสำเร็จ", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "ไม่สามารถลบได้");
+      toast(e?.response?.data?.detail || "ไม่สามารถลบได้", "error");
     } finally { setSaving(false); }
   };
 
@@ -137,6 +141,7 @@ function AffiliationSection({
 function DistrictSection({
   districts, affiliations, isLoading,
 }: { districts: District[]; affiliations: Affiliation[]; isLoading: boolean }) {
+  const { toast } = useToast();
   const [modal,      setModal]      = useState<"add" | "edit" | null>(null);
   const [target,     setTarget]     = useState<District | null>(null);
   const [form,       setForm]       = useState({ name: "", affiliation_id: "" });
@@ -157,8 +162,8 @@ function DistrictSection({
   };
 
   const handleSave = async () => {
-    if (!form.name.trim())    return alert("กรุณากรอกชื่อเขตพื้นที่");
-    if (!form.affiliation_id) return alert("กรุณาเลือกสังกัด");
+    if (!form.name.trim())    { toast("กรุณากรอกชื่อเขตพื้นที่", "warning"); return; }
+    if (!form.affiliation_id) { toast("กรุณาเลือกสังกัด", "warning"); return; }
     setSaving(true);
     try {
       const body = { name: form.name, affiliation_id: Number(form.affiliation_id) };
@@ -169,8 +174,9 @@ function DistrictSection({
       }
       setModal(null);
       globalMutate("/admin/districts");
+      toast(modal === "add" ? "เพิ่มเขตพื้นที่สำเร็จ" : "แก้ไขเขตพื้นที่สำเร็จ", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
     } finally { setSaving(false); }
   };
 
@@ -180,8 +186,9 @@ function DistrictSection({
       await api.delete(`/admin/districts/${d.id}`);
       setConfirm(null);
       globalMutate("/admin/districts");
+      toast("ลบเขตพื้นที่สำเร็จ", "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "ไม่สามารถลบได้");
+      toast(e?.response?.data?.detail || "ไม่สามารถลบได้", "error");
     } finally { setSaving(false); }
   };
 

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -29,6 +30,7 @@ const SEVERITY_BADGE: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 export default function ReportsPage() {
+  const { toast } = useToast();
   const [schoolId,       setSchoolId]       = useState("");
   const [assessmentType, setAssessmentType] = useState("");
   const [dateFrom,       setDateFrom]       = useState("");
@@ -66,7 +68,7 @@ export default function ReportsPage() {
       a.click();
       a.remove();
     } catch {
-      alert("ไม่สามารถส่งออก PDF ได้");
+      toast("ไม่สามารถส่งออก PDF ได้", "error");
     }
   };
 
@@ -86,7 +88,7 @@ export default function ReportsPage() {
       a.click();
       a.remove();
     } catch {
-      alert("ไม่สามารถส่งออก Excel ได้");
+      toast("ไม่สามารถส่งออก Excel ได้", "error");
     }
   };
 

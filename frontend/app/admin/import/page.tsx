@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,10 +81,12 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SmartImportPage() {
+  const { toast } = useToast();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [confirmImport, setConfirmImport] = useState(false);
 
   // Step 1 → 2
   const [preview, setPreview] = useState<SmartPreviewResult | null>(null);
@@ -139,7 +143,7 @@ export default function SmartImportPage() {
 
   const handleFile = useCallback(async (f: File) => {
     if (!f.name.match(/\.xlsx?$/i)) {
-      alert("Smart Import รองรับเฉพาะไฟล์ .xlsx และ .xls เท่านั้น");
+      toast("Smart Import รองรับเฉพาะไฟล์ .xlsx และ .xls เท่านั้น", "warning");
       return;
     }
     setFile(f);
@@ -162,11 +166,11 @@ export default function SmartImportPage() {
       setEditMapping(init);
       setStep(2);
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "ไม่สามารถอ่านไฟล์ได้");
+      toast(e?.response?.data?.detail || "ไม่สามารถอ่านไฟล์ได้", "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -180,11 +184,15 @@ export default function SmartImportPage() {
   const handleConfirm = async () => {
     if (!file || !preview) return;
     if (!selectedSchoolId) {
-      alert("กรุณาเลือกโรงเรียนก่อน");
+      toast("กรุณาเลือกโรงเรียนก่อน", "warning");
       return;
     }
-    if (!confirm(`ยืนยันนำเข้านักเรียนจำนวน ${preview.total_rows} แถว เข้าระบบ?`)) return;
+    setConfirmImport(true);
+  };
 
+  const doImport = async () => {
+    if (!file || !preview || !selectedSchoolId) return;
+    setConfirmImport(false);
     setLoading(true);
     try {
       const form = new FormData();
@@ -196,8 +204,9 @@ export default function SmartImportPage() {
       );
       setResult(res.data);
       setStep(3);
+      toast(`นำเข้าสำเร็จ — สร้างใหม่ ${res.data.created} อัปเดต ${res.data.updated}`, "success");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "เกิดข้อผิดพลาดระหว่าง import");
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาดระหว่าง import", "error");
     } finally {
       setLoading(false);
     }
@@ -615,6 +624,18 @@ export default function SmartImportPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmImport}
+        title="ยืนยันการนำเข้าข้อมูล"
+        message={`นำเข้านักเรียนจำนวน ${preview?.total_rows?.toLocaleString()} แถว เข้าระบบ?`}
+        detail="ข้อมูลที่มีอยู่แล้วจะถูกอัปเดต นักเรียนใหม่จะถูกสร้าง"
+        confirmLabel="ยืนยัน Import"
+        confirmClass="btn-primary"
+        loading={loading}
+        onConfirm={doImport}
+        onCancel={() => setConfirmImport(false)}
+      />
     </div>
   );
 }
