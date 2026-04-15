@@ -18,7 +18,7 @@ interface SmartPreviewResult {
   sheet_name: string;
   headers: string[];
   column_mapping: Record<string, ColInfo | null>;
-  preview_raw: Record<string, string>[];
+  preview_raw: string[][];
   preview_mapped: Record<string, string>[];
 }
 
@@ -29,6 +29,7 @@ interface ImportResult {
   total_processed: number;
   school_name: string;
   errors: { row: number; reason: string }[];
+  nid_warnings: { row: number; student_code: string; name: string; reason: string }[];
 }
 
 interface School {
@@ -87,6 +88,13 @@ export default function SmartImportPage() {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [confirmImport, setConfirmImport] = useState(false);
+  const [nidAcknowledged, setNidAcknowledged] = useState(false);
+
+  // Truncate state
+  const [truncateSchoolId, setTruncateSchoolId] = useState<number | "">("");
+  const [truncateSearch, setTruncateSearch] = useState("");
+  const [confirmTruncate, setConfirmTruncate] = useState(false);
+  const [truncating, setTruncating] = useState(false);
 
   // Step 1 → 2
   const [preview, setPreview] = useState<SmartPreviewResult | null>(null);
@@ -103,8 +111,44 @@ export default function SmartImportPage() {
   // Editable mapping (col_index per field, -1 = ไม่ใช้)
   const [editMapping, setEditMapping] = useState<Record<string, number | null>>({});
 
+  // Auto-school state
+  const [detectedSchoolName, setDetectedSchoolName] = useState<string>("");
+  const [createSchoolDistId,  setCreateSchoolDistId]  = useState<number | "">("");
+  const [createSchoolAffId,   setCreateSchoolAffId]   = useState<number | "">("");
+  const [createSchoolType,    setCreateSchoolType]    = useState<string>("");
+  const [creatingSchool, setCreatingSchool] = useState(false);
+
   // Step 2 → 3
   const [result, setResult] = useState<ImportResult | null>(null);
+
+  // Real-time preview — re-compute จาก preview_raw + editMapping ทุกครั้งที่ mapping เปลี่ยน
+  const livePreview = useMemo(() => {
+    if (!preview) return [];
+    return preview.preview_raw.map(rawRow => {
+      const get = (field: string): string => {
+        const colIdx = editMapping[field];
+        if (colIdx === null || colIdx === undefined || colIdx < 0) return "";
+        return rawRow[colIdx] ?? "";  // ใช้ index โดยตรง — ไม่มีปัญหา duplicate header
+      };
+      const nid = get("national_id").trim();
+      const isValidNid = (v: string) => {
+        if (!v) return true;
+        if (/^G\d{12}$/i.test(v)) return true;
+        return /^\d{13}$/.test(v.replace(/[\s\-.]/g, ""));
+      };
+      return {
+        student_code: get("student_code"),
+        first_name:   get("first_name"),
+        last_name:    get("last_name"),
+        gender:       get("gender"),
+        grade:        get("grade"),
+        classroom:    get("classroom"),
+        birthdate:    get("birthdate"),
+        national_id:  nid,
+        nid_valid:    isValidNid(nid),
+      };
+    });
+  }, [preview, editMapping]);
 
   // โหลดรายการสังกัด เขตพื้นที่ และโรงเรียน
   useEffect(() => {
@@ -164,6 +208,22 @@ export default function SmartImportPage() {
         init[field] = info?.col_index ?? null;
       }
       setEditMapping(init);
+
+      // Auto-detect school name จากไฟล์
+      const rawSchoolName = data.preview_mapped[0]?.school_name?.trim() ?? "";
+      setDetectedSchoolName(rawSchoolName);
+      if (rawSchoolName) {
+        const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+        const match = schools.find(s => norm(s.name) === norm(rawSchoolName)
+          || norm(s.name).includes(norm(rawSchoolName))
+          || norm(rawSchoolName).includes(norm(s.name)));
+        if (match) {
+          setSelectedSchoolId(match.id);
+          toast(`พบโรงเรียน "${match.name}" — เลือกอัตโนมัติแล้ว`, "success");
+        } else {
+          setSelectedSchoolId("");
+        }
+      }
       setStep(2);
     } catch (e: any) {
       toast(e?.response?.data?.detail || "ไม่สามารถอ่านไฟล์ได้", "error");
@@ -187,6 +247,7 @@ export default function SmartImportPage() {
       toast("กรุณาเลือกโรงเรียนก่อน", "warning");
       return;
     }
+    setNidAcknowledged(false);
     setConfirmImport(true);
   };
 
@@ -197,6 +258,8 @@ export default function SmartImportPage() {
     try {
       const form = new FormData();
       form.append("file", file);
+      // ส่ง mapping ที่ user ยืนยันแล้ว — backend จะใช้แทน auto-detect
+      form.append("col_mapping", JSON.stringify(editMapping));
       const res = await api.post(
         `/admin/import/smart-confirm?school_id=${selectedSchoolId}`,
         form,
@@ -222,6 +285,57 @@ export default function SmartImportPage() {
     setSchoolSearch("");
     setSelectedSchoolId("");
     setStep(1);
+  };
+
+  // สร้างโรงเรียนใหม่จากชื่อที่ตรวจพบในไฟล์
+  const doCreateSchool = async () => {
+    if (!detectedSchoolName || !createSchoolDistId) return;
+    setCreatingSchool(true);
+    try {
+      const res = await api.post("/admin/schools", {
+        name: detectedSchoolName,
+        district_id: createSchoolDistId,
+        school_type: createSchoolType || null,
+      });
+      // ใช้ชื่อที่ backend normalize แล้ว (มีคำนำหน้าที่ถูกต้อง)
+      const normalizedName: string = res.data.name;
+      const newSchool: School = {
+        id: res.data.id,
+        name: normalizedName,
+        district_id: createSchoolDistId as number,
+        school_type: createSchoolType || null,
+      };
+      setSchools(prev => [...prev, newSchool]);
+      setSelectedSchoolId(res.data.id);
+      toast(`สร้างโรงเรียน "${normalizedName}" สำเร็จ และเลือกแล้ว`, "success");
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "สร้างโรงเรียนไม่สำเร็จ", "error");
+    } finally {
+      setCreatingSchool(false);
+    }
+  };
+
+  // Truncate school
+  const filteredTruncateSchools = useMemo(() => {
+    if (!truncateSearch.trim()) return schools;
+    const q = truncateSearch.trim().toLowerCase();
+    return schools.filter(s => s.name.toLowerCase().includes(q));
+  }, [schools, truncateSearch]);
+
+  const doTruncate = async () => {
+    if (!truncateSchoolId) return;
+    setTruncating(true);
+    setConfirmTruncate(false);
+    try {
+      const res = await api.delete(`/admin/students/by-school/${truncateSchoolId}`);
+      toast(`ลบนักเรียนของ "${res.data.school_name}" สำเร็จ — ${res.data.deleted_students} คน`, "success");
+      setTruncateSchoolId("");
+      setTruncateSearch("");
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+    } finally {
+      setTruncating(false);
+    }
   };
 
   // ─── Download Error Report ───────────────────────────────────────────────────
@@ -309,73 +423,114 @@ export default function SmartImportPage() {
             </span>
           </div>
 
+          {/* NID Validation Warning — real-time จาก livePreview */}
+          {(() => {
+            const nidIssues = livePreview.filter(row => row.national_id && !row.nid_valid);
+            if (nidIssues.length === 0) return null;
+            return (
+              <div className="alert alert-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">พบเลขบัตรประชาชนที่ไม่ครบ 13 หลักใน {nidIssues.length} แถว (จาก 5 แถวตัวอย่าง)</p>
+                  <p className="text-sm mt-1">ระบบจะ <strong>ข้ามการบันทึกเลขบัตรปชช.</strong> ของแถวที่ผิดรูปแบบ — กรุณาตรวจสอบ Column Mapping ของ <code>เลขประจำตัวประชาชน</code> ด้านล่างให้ถูกต้อง</p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* School Selector */}
           <div className="card bg-base-100 shadow-sm border border-base-200">
             <div className="card-body p-4 space-y-3">
-              <h2 className="font-semibold text-sm">🏫 ค้นหาและเลือกโรงเรียนที่จะ Import:</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-sm">🏫 โรงเรียนที่จะ Import:</h2>
+                {detectedSchoolName && (
+                  <span className="text-xs text-base-content/50">
+                    ตรวจพบในไฟล์: <span className="font-medium text-base-content/80">"{detectedSchoolName}"</span>
+                  </span>
+                )}
+              </div>
+
+              {/* กรณีที่ตรวจพบชื่อโรงเรียนในไฟล์ แต่ไม่พบในระบบ */}
+              {detectedSchoolName && !selectedSchoolId && (() => {
+                const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+                const exists = schools.some(s => norm(s.name) === norm(detectedSchoolName)
+                  || norm(s.name).includes(norm(detectedSchoolName))
+                  || norm(detectedSchoolName).includes(norm(s.name)));
+                if (exists) return null;
+                const distForCreate = districts.filter(d => !createSchoolAffId || d.affiliation_id === Number(createSchoolAffId));
+                return (
+                  <div className="alert alert-warning py-3">
+                    <div className="w-full space-y-2">
+                      <p className="font-semibold text-sm">ไม่พบ "{detectedSchoolName}" ในระบบ — สร้างโรงเรียนใหม่ได้เลย</p>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <select className="select select-bordered select-xs"
+                          value={createSchoolAffId}
+                          onChange={e => { setCreateSchoolAffId(Number(e.target.value) || ""); setCreateSchoolDistId(""); }}>
+                          <option value="">— เลือกสังกัด —</option>
+                          {affiliations.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                        <select className="select select-bordered select-xs"
+                          value={createSchoolDistId}
+                          onChange={e => setCreateSchoolDistId(Number(e.target.value) || "")}
+                          disabled={!createSchoolAffId && distForCreate.length > 10}>
+                          <option value="">— เลือกเขตพื้นที่ —</option>
+                          {distForCreate.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                        <select className="select select-bordered select-xs"
+                          value={createSchoolType}
+                          onChange={e => setCreateSchoolType(e.target.value)}>
+                          <option value="">— ประเภทสถานศึกษา —</option>
+                          {["ประถมศึกษา","มัธยมศึกษา","อาชีวศึกษา","เอกชน","สกร.","กศน."].map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn btn-warning btn-xs"
+                          disabled={!createSchoolDistId || creatingSchool}
+                          onClick={doCreateSchool}>
+                          {creatingSchool ? <span className="loading loading-spinner loading-xs"/> : "➕ สร้างและเลือก"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Manual selector + filter */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <select
-                  className="select select-bordered select-sm w-full"
+                <select className="select select-bordered select-sm w-full"
                   value={selectedAffId}
-                  onChange={(e) => {
-                    setSelectedAffId(Number(e.target.value) || "");
-                    setSelectedDistId("");
-                    setSelectedSchoolId("");
-                  }}
-                >
+                  onChange={(e) => { setSelectedAffId(Number(e.target.value) || ""); setSelectedDistId(""); setSelectedSchoolId(""); }}>
                   <option value="">— ทุกสังกัด —</option>
-                  {affiliations.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
+                  {affiliations.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
-
-                <select
-                  className="select select-bordered select-sm w-full"
+                <select className="select select-bordered select-sm w-full"
                   value={selectedDistId}
-                  onChange={(e) => {
-                    setSelectedDistId(Number(e.target.value) || "");
-                    setSelectedSchoolId("");
-                  }}
-                  disabled={availableDistricts.length === 0}
-                >
+                  onChange={(e) => { setSelectedDistId(Number(e.target.value) || ""); setSelectedSchoolId(""); }}
+                  disabled={availableDistricts.length === 0}>
                   <option value="">— ทุกเขตพื้นที่ —</option>
-                  {availableDistricts.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
+                  {availableDistricts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-
-                <input
-                  type="text"
-                  placeholder="🔍 พิมพ์ชื่อโรงเรียน..."
-                  className="input input-bordered input-sm w-full focus:outline-primary/50"
+                <input type="text" placeholder="🔍 พิมพ์ชื่อโรงเรียน..."
+                  className="input input-bordered input-sm w-full"
                   value={schoolSearch}
-                  onChange={(e) => {
-                    setSchoolSearch(e.target.value);
-                    setSelectedSchoolId("");
-                  }}
-                />
+                  onChange={(e) => { setSchoolSearch(e.target.value); setSelectedSchoolId(""); }}/>
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <select
-                  className={`select select-bordered select-sm flex-1 ${
-                    !selectedSchoolId 
-                      ? "select-warning border-warning/50 bg-warning/5" 
-                      : "select-success border-success/50 bg-success/5"
-                  }`}
+                  className={`select select-bordered select-sm flex-1 ${!selectedSchoolId ? "select-warning border-warning/50 bg-warning/5" : "select-success border-success/50 bg-success/5"}`}
                   value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(Number(e.target.value) || "")}
-                >
+                  onChange={(e) => setSelectedSchoolId(Number(e.target.value) || "")}>
                   <option value="">— เลือกโรงเรียน ({filteredSchools.length} แห่ง) —</option>
                   {filteredSchools.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.school_type ? ` (${s.school_type})` : ""}
-                    </option>
+                    <option key={s.id} value={s.id}>{s.name}{s.school_type ? ` (${s.school_type})` : ""}</option>
                   ))}
                 </select>
                 {selectedSchoolId && (
-                  <span className="text-success text-sm font-medium whitespace-nowrap hidden sm:inline-block">✅ เลือกแล้ว</span>
+                  <span className="text-success text-sm font-medium whitespace-nowrap hidden sm:inline-block">✅ {schools.find(s => s.id === selectedSchoolId)?.name}</span>
                 )}
               </div>
             </div>
@@ -469,50 +624,57 @@ export default function SmartImportPage() {
             </div>
           </div>
 
-          {/* Data Preview */}
+          {/* Data Preview — real-time จาก livePreview */}
           <div className="card bg-base-100 shadow-sm border border-base-200">
             <div className="card-body p-4">
-              <h2 className="font-semibold mb-3">
+              <h2 className="font-semibold mb-1">
                 👁️ ตัวอย่างข้อมูลหลัง Mapping (5 แถวแรก)
               </h2>
+              <p className="text-xs text-base-content/40 mb-3">อัปเดตทันทีเมื่อเปลี่ยน mapping ด้านบน</p>
               <div className="overflow-x-auto">
                 <table className="table table-xs table-zebra text-sm">
                   <thead>
                     <tr>
-                      <th>รหัส</th>
+                      <th>รหัสนักเรียน</th>
                       <th>ชื่อ</th>
                       <th>นามสกุล</th>
                       <th>เพศ</th>
                       <th>ชั้น/ห้อง</th>
                       <th>วันเกิด</th>
-                      <th>เลขปชช.</th>
+                      <th>เลขปชช. / G-Code</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.preview_mapped.map((row, i) => (
+                    {livePreview.map((row, i) => (
                       <tr key={i}>
-                        <td className="font-mono text-xs">{row.student_code || "—"}</td>
+                        <td className="font-mono text-xs">
+                          {row.student_code || <span className="text-error">ว่าง!</span>}
+                        </td>
                         <td>{row.first_name || "—"}</td>
                         <td>{row.last_name || "—"}</td>
                         <td>
-                          <span
-                            className={`badge badge-xs ${
-                              row.gender === "ชาย"
-                                ? "badge-info"
-                                : row.gender === "หญิง"
-                                ? "badge-warning"
-                                : "badge-ghost"
-                            }`}
-                          >
+                          <span className={`badge badge-xs ${
+                            row.gender === "ชาย" ? "badge-info"
+                            : row.gender === "หญิง" ? "badge-warning"
+                            : "badge-ghost"
+                          }`}>
                             {row.gender || "ไม่ระบุ"}
                           </span>
                         </td>
                         <td className="text-xs">{row.classroom || row.grade || "—"}</td>
                         <td className="text-xs">{row.birthdate || "—"}</td>
                         <td className="font-mono text-xs">
-                          {row.national_id
-                            ? row.national_id.slice(0, 3) + "**********"
-                            : "—"}
+                          {row.national_id ? (
+                            row.nid_valid ? (
+                              <span className="text-success">
+                                {row.national_id.slice(0, 3)}**********
+                              </span>
+                            ) : (
+                              <span className="text-error" title={row.national_id}>
+                                ⚠️ {row.national_id.slice(0, 6)}… (ผิดรูปแบบ)
+                              </span>
+                            )
+                          ) : "—"}
                         </td>
                       </tr>
                     ))}
@@ -579,6 +741,38 @@ export default function SmartImportPage() {
             </div>
           </div>
 
+          {/* NID Warnings Table */}
+          {result.nid_warnings?.length > 0 && (
+            <div className="card bg-base-100 shadow border border-warning/40">
+              <div className="card-body p-4">
+                <h2 className="font-semibold text-warning text-sm">
+                  ⚠️ เลขประจำตัวไม่ถูกรูปแบบ ({result.nid_warnings.length} รายการ) — ไม่ได้บันทึกเลขบัตรปชช. ของรายการเหล่านี้
+                </h2>
+                <p className="text-xs text-base-content/60 mt-1 mb-2">
+                  นักเรียนถูก import สำเร็จ แต่ไม่มีเลขประจำตัวในระบบ — อาจ login ไม่ได้จนกว่าจะแก้ไขข้อมูล<br/>
+                  <span className="text-info">หมายเหตุ: G-Code (G + 12 หลัก) เช่น G123456789012 คือรหัส DMC สำหรับนักเรียนไร้สัญชาติ — ระบบรับได้แล้ว</span>
+                </p>
+                <div className="overflow-x-auto max-h-48">
+                  <table className="table table-xs">
+                    <thead className="sticky top-0 bg-base-100">
+                      <tr><th>แถวที่</th><th>รหัส</th><th>ชื่อ</th><th>สาเหตุ</th></tr>
+                    </thead>
+                    <tbody>
+                      {result.nid_warnings.map((w, i) => (
+                        <tr key={i}>
+                          <td className="font-mono text-xs text-warning">{w.row}</td>
+                          <td className="font-mono text-xs">{w.student_code}</td>
+                          <td className="text-xs">{w.name}</td>
+                          <td className="text-xs text-base-content/70">{w.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Table */}
           {result.errors.length > 0 && (
             <div className="card bg-base-100 shadow border border-base-200">
@@ -625,16 +819,115 @@ export default function SmartImportPage() {
         </div>
       )}
 
+      {/* ─── Truncate Zone (แสดงทุก step) ──────────────────────────────────── */}
+      <div className="divider text-base-content/30 text-xs">โซนอันตราย</div>
+      <div className="card bg-base-100 border-2 border-error/30 shadow-sm">
+        <div className="card-body p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-error text-lg">🗑️</span>
+            <div>
+              <h2 className="font-bold text-error text-sm">ล้างข้อมูลนักเรียนทั้งโรงเรียน</h2>
+              <p className="text-xs text-base-content/50">ใช้กรณี import ผิดทั้งโรงเรียน — ลบนักเรียนและ account ทั้งหมดของโรงเรียนที่เลือก</p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              placeholder="🔍 พิมพ์ชื่อโรงเรียนที่ต้องการล้างข้อมูล..."
+              className="input input-bordered input-sm input-error flex-1"
+              value={truncateSearch}
+              onChange={e => { setTruncateSearch(e.target.value); setTruncateSchoolId(""); }}
+            />
+            <select
+              className="select select-bordered select-sm select-error w-full sm:w-72"
+              value={truncateSchoolId}
+              onChange={e => setTruncateSchoolId(Number(e.target.value) || "")}
+            >
+              <option value="">— เลือกโรงเรียน ({filteredTruncateSchools.length} แห่ง) —</option>
+              {filteredTruncateSchools.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-error btn-sm whitespace-nowrap"
+              disabled={!truncateSchoolId || truncating}
+              onClick={() => setConfirmTruncate(true)}
+            >
+              {truncating ? <span className="loading loading-spinner loading-xs" /> : "🗑️ ล้างข้อมูล"}
+            </button>
+          </div>
+          {truncateSchoolId && (
+            <div className="alert alert-error py-2 text-xs">
+              ⚠️ จะลบนักเรียน <strong>ทั้งหมด</strong> ของ <strong>{schools.find(s => s.id === truncateSchoolId)?.name}</strong> — ไม่สามารถกู้คืนได้
+            </div>
+          )}
+        </div>
+      </div>
+
+      {confirmImport && (() => {
+        const nidIssueCount = livePreview.filter(r => r.national_id && !r.nid_valid).length;
+        const hasNidIssues = nidIssueCount > 0;
+        const canConfirm = !hasNidIssues || nidAcknowledged;
+        return (
+          <dialog className="modal modal-open">
+            <div className="modal-box max-w-md">
+              <h3 className="font-bold text-lg mb-2">ยืนยันการนำเข้าข้อมูล</h3>
+              <p className="text-sm text-base-content/70">
+                นำเข้านักเรียนจำนวน <strong>{preview?.total_rows?.toLocaleString()}</strong> แถว เข้าระบบ?
+              </p>
+              <p className="text-xs text-base-content/50 mt-1">ข้อมูลที่มีอยู่แล้วจะถูกอัปเดต นักเรียนใหม่จะถูกสร้าง</p>
+
+              {hasNidIssues && (
+                <div className="alert alert-warning mt-4 text-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  </svg>
+                  <div>
+                    <p className="font-semibold">พบเลขบัตรประชาชนไม่ถูกรูปแบบ {nidIssueCount} แถว (จาก 5 ตัวอย่าง)</p>
+                    <p className="text-xs mt-1">อาจเกิดจาก column mapping สลับกัน — กรุณาตรวจสอบ preview อีกครั้ง</p>
+                  </div>
+                </div>
+              )}
+
+              {hasNidIssues && (
+                <label className="flex items-start gap-3 mt-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-warning mt-0.5"
+                    checked={nidAcknowledged}
+                    onChange={e => setNidAcknowledged(e.target.checked)}
+                  />
+                  <span className="text-xs text-base-content/70">
+                    ฉันตรวจสอบ column mapping แล้ว และรับทราบว่าแถวที่เลขบัตรผิดรูปแบบจะ <strong>ไม่มีเลขบัตรประชาชน</strong> ในระบบ
+                  </span>
+                </label>
+              )}
+
+              <div className="modal-action mt-5">
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmImport(false)}>ยกเลิก</button>
+                <button
+                  className={`btn btn-sm ${canConfirm ? "btn-primary" : "btn-disabled"}`}
+                  disabled={!canConfirm || loading}
+                  onClick={doImport}
+                >
+                  {loading ? <><span className="loading loading-spinner loading-xs"/>กำลัง Import...</> : "ยืนยัน Import"}
+                </button>
+              </div>
+            </div>
+            <form method="dialog" className="modal-backdrop"><button onClick={() => setConfirmImport(false)}>close</button></form>
+          </dialog>
+        );
+      })()}
+
       <ConfirmModal
-        open={confirmImport}
-        title="ยืนยันการนำเข้าข้อมูล"
-        message={`นำเข้านักเรียนจำนวน ${preview?.total_rows?.toLocaleString()} แถว เข้าระบบ?`}
-        detail="ข้อมูลที่มีอยู่แล้วจะถูกอัปเดต นักเรียนใหม่จะถูกสร้าง"
-        confirmLabel="ยืนยัน Import"
-        confirmClass="btn-primary"
-        loading={loading}
-        onConfirm={doImport}
-        onCancel={() => setConfirmImport(false)}
+        open={confirmTruncate}
+        title="⚠️ ล้างข้อมูลนักเรียนทั้งโรงเรียน"
+        message={`ต้องการลบนักเรียนทั้งหมดของ "${schools.find(s => s.id === truncateSchoolId)?.name}" ใช่หรือไม่?`}
+        detail="การกระทำนี้ไม่สามารถย้อนกลับได้ นักเรียนและ account ทั้งหมดจะถูกลบถาวร"
+        confirmLabel="ยืนยัน ล้างข้อมูล"
+        confirmClass="btn-error"
+        onConfirm={doTruncate}
+        onCancel={() => setConfirmTruncate(false)}
       />
     </div>
   );

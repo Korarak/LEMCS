@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete, or_
 from pydantic import BaseModel
 from app.database import get_db
 from app.deps import get_current_admin_user, require_role
-from app.models.db_models import School, Student, District, Affiliation
+from app.models.db_models import School, Student, District, Affiliation, User
 
 router = APIRouter()
 
@@ -199,15 +199,19 @@ async def get_schools(
 async def get_students(
     school_id: int | None = Query(None),
     district_id: int | None = Query(None),
+    affiliation_id: int | None = Query(None),
     grade: str | None = Query(None),
     classroom: str | None = Query(None),
+    gender: str | None = Query(None),
+    is_active: bool | None = Query(None),
+    search: str | None = Query(None),
     limit: int = Query(50),
     offset: int = Query(0),
     current_user = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """รายชื่อนักเรียน (กรองตาม RBAC scope)"""
-    query = (
+    """รายชื่อนักเรียน (กรองตาม RBAC scope) พร้อม server-side search"""
+    base = (
         select(Student, School.name.label("school_name"))
         .join(School, Student.school_id == School.id)
         .join(District, School.district_id == District.id)
@@ -215,45 +219,68 @@ async def get_students(
 
     # RBAC scope
     if current_user.role == "schooladmin":
-        query = query.where(Student.school_id == current_user.school_id)
+        base = base.where(Student.school_id == current_user.school_id)
     elif current_user.role == "commissionadmin":
         if current_user.district_id:
-            query = query.where(School.district_id == current_user.district_id)
+            base = base.where(School.district_id == current_user.district_id)
         elif current_user.affiliation_id:
-            query = query.where(District.affiliation_id == current_user.affiliation_id)
+            base = base.where(District.affiliation_id == current_user.affiliation_id)
     else:
         # superadmin / systemadmin → filter by params
         if school_id:
-            query = query.where(Student.school_id == school_id)
-        if district_id:
-            query = query.where(School.district_id == district_id)
+            base = base.where(Student.school_id == school_id)
+        elif district_id:
+            base = base.where(School.district_id == district_id)
+        elif affiliation_id:
+            base = base.where(District.affiliation_id == affiliation_id)
 
     if grade:
-        query = query.where(Student.grade == grade)
+        base = base.where(Student.grade == grade)
     if classroom:
-        query = query.where(Student.classroom == classroom)
+        base = base.where(Student.classroom == classroom)
+    if gender:
+        base = base.where(Student.gender == gender)
+    if is_active is not None:
+        base = base.where(Student.is_active == is_active)
+    if search:
+        term = f"%{search.strip()}%"
+        base = base.where(
+            or_(
+                Student.student_code.ilike(term),
+                Student.first_name.ilike(term),
+                Student.last_name.ilike(term),
+                func.concat(Student.first_name, " ", Student.last_name).ilike(term),
+            )
+        )
 
-    query = query.order_by(Student.grade, Student.classroom, Student.student_code).limit(limit).offset(offset)
+    # Total count (same filters, no limit/offset)
+    count_result = await db.execute(select(func.count()).select_from(base.subquery()))
+    total = count_result.scalar() or 0
 
-    result = await db.execute(query)
+    # Paginated data
+    data_query = base.order_by(Student.grade, Student.classroom, Student.student_code).limit(limit).offset(offset)
+    result = await db.execute(data_query)
     rows = result.all()
 
-    return [
-        {
-            "id": str(r.Student.id),
-            "student_code": r.Student.student_code,
-            "first_name": r.Student.first_name,
-            "last_name": r.Student.last_name,
-            "gender": r.Student.gender,
-            "birthdate": r.Student.birthdate.isoformat() if r.Student.birthdate else None,
-            "grade": r.Student.grade,
-            "classroom": r.Student.classroom,
-            "school_id": r.Student.school_id,
-            "school_name": r.school_name,
-            "is_active": r.Student.is_active,
-            "created_at": r.Student.created_at.isoformat() if r.Student.created_at else None,
-        } for r in rows
-    ]
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": str(r.Student.id),
+                "student_code": r.Student.student_code,
+                "first_name": r.Student.first_name,
+                "last_name": r.Student.last_name,
+                "gender": r.Student.gender,
+                "birthdate": r.Student.birthdate.isoformat() if r.Student.birthdate else None,
+                "grade": r.Student.grade,
+                "classroom": r.Student.classroom,
+                "school_id": r.Student.school_id,
+                "school_name": r.school_name,
+                "is_active": r.Student.is_active,
+                "created_at": r.Student.created_at.isoformat() if r.Student.created_at else None,
+            } for r in rows
+        ],
+    }
 
 # ──────────────────────────────────────────
 # CRUD: Students
@@ -313,6 +340,37 @@ async def update_student(
     await db.commit()
     return {"id": str(stu.id), "updated": True}
 
+@router.delete("/students/by-school/{school_id}")
+async def truncate_students_by_school(
+    school_id: int,
+    current_user = Depends(require_role("systemadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ลบนักเรียนทั้งหมดของโรงเรียน (รวม User records) — ใช้กรณี import ผิดทั้งโรงเรียน"""
+    school_result = await db.execute(select(School).where(School.id == school_id))
+    school = school_result.scalar_one_or_none()
+    if not school:
+        raise HTTPException(404, f"ไม่พบโรงเรียน ID={school_id}")
+
+    # ดึง student id ทั้งหมดของโรงเรียน
+    stu_result = await db.execute(select(Student.id).where(Student.school_id == school_id))
+    student_ids = [row[0] for row in stu_result.fetchall()]
+
+    if not student_ids:
+        return {"school_name": school.name, "deleted_students": 0, "deleted_users": 0}
+
+    # ลบ User records ก่อน (FK constraint)
+    user_del = await db.execute(delete(User).where(User.student_id.in_(student_ids)))
+    # ลบ Student records
+    stu_del = await db.execute(delete(Student).where(Student.school_id == school_id))
+    await db.commit()
+
+    return {
+        "school_name": school.name,
+        "deleted_students": stu_del.rowcount,
+        "deleted_users": user_del.rowcount,
+    }
+
 @router.delete("/students/{student_id}")
 async def toggle_student_active(
     student_id: str,
@@ -347,7 +405,8 @@ async def create_school(
     current_user = Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
-    school = School(name=body.name, district_id=body.district_id, school_type=body.school_type)
+    name = normalize_school_name(body.name.strip(), body.school_type)
+    school = School(name=name, district_id=body.district_id, school_type=body.school_type)
     db.add(school)
     await db.commit()
     await db.refresh(school)
@@ -364,10 +423,15 @@ async def update_school(
     school = result.scalar_one_or_none()
     if not school:
         raise HTTPException(404, "ไม่พบโรงเรียน")
-    for field, val in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    # normalize ชื่อถ้ามีการแก้ไข — ใช้ school_type ใหม่ถ้ามี ไม่งั้นใช้อันเดิม
+    if "name" in updates:
+        effective_type = updates.get("school_type", school.school_type)
+        updates["name"] = normalize_school_name(updates["name"].strip(), effective_type)
+    for field, val in updates.items():
         setattr(school, field, val)
     await db.commit()
-    return {"id": school.id, "updated": True}
+    return {"id": school.id, "name": school.name, "updated": True}
 
 @router.delete("/schools/{school_id}")
 async def delete_school(
@@ -379,6 +443,11 @@ async def delete_school(
     school = result.scalar_one_or_none()
     if not school:
         raise HTTPException(404, "ไม่พบโรงเรียน")
+    student_count = (await db.execute(
+        select(func.count()).select_from(Student).where(Student.school_id == school_id)
+    )).scalar() or 0
+    if student_count > 0:
+        raise HTTPException(400, f"ไม่สามารถลบได้ — ยังมีนักเรียน {student_count} คนในโรงเรียนนี้")
     await db.delete(school)
     await db.commit()
     return {"deleted": True}
@@ -513,6 +582,7 @@ from app.services.import_service import (
     parse_csv, parse_excel,
     bulk_import_students, bulk_import_schools,
     smart_parse_excel, smart_bulk_import_students,
+    normalize_school_name,
 )
 
 
@@ -547,15 +617,18 @@ class SmartImportConfirmBody(BaseModel):
 async def smart_import_confirm(
     file: UploadFile = File(...),
     school_id: int = Query(..., description="ID ของโรงเรียนที่จะ import"),
+    col_mapping: Optional[str] = Form(None, description="JSON string ของ {field: col_index} ที่ user ยืนยันแล้ว"),
     current_user = Depends(require_role("systemadmin", "schooladmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Smart Import Confirm — นำเข้าข้อมูลจริง
-    - รับ Excel file + school_id
-    - Auto-detect header + map columns
+    - รับ Excel file + school_id + col_mapping (JSON จาก user)
+    - ใช้ col_mapping ที่ user ยืนยันแล้ว (ไม่ auto-detect ซ้ำ)
     - Validate, encrypt national_id, Insert/Upsert students
     """
+    import json as _json
+
     # schooladmin สามารถ import ได้เฉพาะโรงเรียนตัวเอง
     if current_user.role == "schooladmin" and current_user.school_id != school_id:
         raise HTTPException(403, "คุณสามารถ import ได้เฉพาะโรงเรียนของคุณเท่านั้น")
@@ -571,10 +644,24 @@ async def smart_import_confirm(
     if not (filename.endswith(".xlsx") or filename.endswith(".xls")):
         raise HTTPException(400, "Smart Import รองรับเฉพาะไฟล์ .xlsx และ .xls เท่านั้น")
 
+    # แปลง col_mapping JSON → dict หรือ None (ถ้าไม่ส่งมา = auto-detect)
+    col_map_override: Optional[dict] = None
+    if col_mapping:
+        try:
+            parsed = _json.loads(col_mapping)
+            # แปลงค่า null/"-1" → None, string index → int
+            col_map_override = {
+                field: (int(idx) if idx is not None and int(idx) >= 0 else None)
+                for field, idx in parsed.items()
+            }
+        except Exception:
+            raise HTTPException(400, "col_mapping ไม่ถูกรูปแบบ JSON")
+
     result = await smart_bulk_import_students(
         db=db,
         content=content,
         school_id=school_id,
+        col_map_override=col_map_override,
     )
     result["school_name"] = school.name
     return result

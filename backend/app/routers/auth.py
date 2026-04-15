@@ -1,13 +1,35 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.database import get_db
 from app.schemas.auth import LoginRequest, OTPRequest, OTPVerifyRequest, TokenResponse
 from app.services.auth_service import (
     request_otp, verify_otp, create_tokens, refresh_access_token
 )
+from app.deps import get_current_student
+from app.models.db_models import Student, School
 
 router = APIRouter()
+
+@router.get("/me")
+async def get_me(student: Student = Depends(get_current_student), db: AsyncSession = Depends(get_db)):
+    """ดึงข้อมูลนักเรียนที่ login อยู่"""
+    school_name = None
+    if student.school_id:
+        result = await db.execute(select(School).where(School.id == student.school_id))
+        school = result.scalar_one_or_none()
+        school_name = school.name if school else None
+    return {
+        "student_code": student.student_code,
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "gender": student.gender,
+        "grade": student.grade,
+        "classroom": student.classroom,
+        "school_name": school_name,
+        "birthdate": student.birthdate.isoformat() if student.birthdate else None,
+    }
 
 @router.post("/otp/request")
 async def request_login_otp(body: OTPRequest, db: AsyncSession = Depends(get_db)):

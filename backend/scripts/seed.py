@@ -33,6 +33,7 @@ LAST_NAMES = [
 GRADES_PRIMARY   = ["ป.4", "ป.5", "ป.6"]
 GRADES_SECONDARY = ["ม.1", "ม.2", "ม.3", "ม.4", "ม.5", "ม.6"]
 GRADES_VOC       = ["ปวช.1", "ปวช.2", "ปวช.3"]
+GRADES_SKR       = ["ป.4", "ป.5", "ป.6", "ม.1", "ม.2", "ม.3", "ม.4", "ม.5", "ม.6"]
 CLASSROOMS       = ["1", "2", "3", "4", "5"]
 
 TODAY = date(2026, 4, 3)
@@ -115,7 +116,7 @@ async def main():
              GRADES_PRIMARY + GRADES_SECONDARY),
             (15, "โรงเรียนดาวเรืองวิทยา",              6, "เอกชน",
              GRADES_PRIMARY + GRADES_SECONDARY),
-            (16, "ศูนย์การเรียนรู้ กศน.อ.เมืองเลย",   7, "กศน.",        ["ม.ปลาย"]),
+            (16, "สำนักงานส่งเสริมการเรียนรู้อำเภอเมืองเลย", 7, "สกร.", GRADES_SKR),
             (17, "วิทยาลัยการอาชีพวังสะพุง",           1, "อาชีวศึกษา",  GRADES_VOC),
         ]
         school_meta = {}
@@ -234,8 +235,8 @@ async def main():
                     grade = random.choice(GRADES_PRIMARY)
                 elif stype == "มัธยมศึกษา":
                     grade = random.choice(GRADES_SECONDARY)
-                elif stype == "กศน.":
-                    grade = "ม.ปลาย"
+                elif stype in ("กศน.", "สกร."):
+                    grade = random.choice(GRADES_SKR)
                 else:
                     age_now = TODAY.year - bdate.year
                     grade = random.choice(
@@ -317,8 +318,8 @@ async def main():
                         created_at=ts - timedelta(minutes=30),
                     ))
 
-                    # Depression: CDI (age < 11) or PHQ-A (age 11-20)
-                    if age_now < 11:
+                    # Depression: CDI (age 7-17) or PHQ-A (age 18+), age < 7 → ST-5 only
+                    if 7 <= age_now <= 17:
                         sev_c = random.choices(["normal", "clinical"], weights=cdi_sev_w)[0]
                         lo, hi = cdi_scores[sev_c]
                         a = Assessment(

@@ -2,8 +2,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-# สมมติใช้ deps ดึง mock student ไปก่อนสำหรับ Phase 1, 2 ที่เป็น bypass
-# เดี๋ยวเราจะเขียน get_current_student แบบ mock ง่ายๆ
+from app.deps import get_current_student
 from app.schemas.assessment import (
     AssessmentSubmitRequest, AssessmentResponse, AutosaveRequest
 )
@@ -14,57 +13,86 @@ from app.services.alert_service import check_and_trigger_alert
 import redis.asyncio as aioredis
 from app.config import settings
 from sqlalchemy import select
+from datetime import date
 
 router = APIRouter()
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
-# ฟังก์ชันง่ายๆ ในการหา student คนปัจจุบันจาก Header แบบชั่วคราว
-# เนื่องจากใน Phase 1 เรา Bypass OTP หน้าบ้านมา เราอาจจะใช้ JWT 
-# แต่เพื่อความรวดเร็วในการเทสต์ Phase 2 จะใช้ Depend ดึงนักเรียนทดสอบ (12345) อัตโนมัติ (Mock)
-async def get_current_student_mock(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Student).where(Student.student_code == "12345"))
-    student = result.scalar_one_or_none()
-    if not student:
-        raise HTTPException(status_code=401, detail="Unauthorized (Mock student 12345 missing)")
-    return student
 
-def get_current_academic_year():
-    return "2568"
+def get_current_academic_year() -> str:
+    """ปีการศึกษาไทย (พ.ศ. + 543)"""
+    y = date.today().year + 543
+    # ภาคเรียนที่ 2 เริ่ม พ.ย. — ใช้ปีเดิม; ภาคเรียนที่ 1 เริ่ม พ.ค. — ปีใหม่
+    return str(y)
 
-def get_current_term():
-    return 1
+
+def get_current_term() -> int:
+    m = date.today().month
+    return 1 if m >= 5 else 2
+
 
 @router.get("/available")
 async def get_available_assessments(
-    current_user: Student = Depends(get_current_student_mock),
+    current_user: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """รายการแบบประเมินที่นักเรียนต้องทำในภาคเรียนนี้"""
-    # จำลองส่งกลับ 3 ชุด
-    return [
-        {"type": "ST5", "name_th": "แบบประเมินความเครียด (ST-5)", "question_count": 5, "estimated_minutes": 2},
-        {"type": "PHQA", "name_th": "แบบประเมินภาวะซึมเศร้าเด็วัยรุ่น (PHQ-A)", "question_count": 11, "estimated_minutes": 5},
-        {"type": "CDI", "name_th": "แบบประเมินภาวะซึมเศร้าในเด็ก (CDI)", "question_count": 27, "estimated_minutes": 10},
+    from datetime import date as dt
+    today = dt.today()
+    age = today.year - (current_user.birthdate.year if current_user.birthdate else today.year)
+    if current_user.birthdate:
+        if (today.month, today.day) < (current_user.birthdate.month, current_user.birthdate.day):
+            age -= 1
+
+    assessments = [
+        {
+            "type": "ST5",
+            "name_th": "แบบประเมินความเครียด (ST-5)",
+            "question_count": 5,
+            "estimated_minutes": 2,
+        },
     ]
+    # routing rule: age 7-17 → CDI, age >= 18 → PHQ-A, age < 7 → ST-5 only
+    # อ้างอิง: CDI (Maria Kovacs, 1985) validated สำหรับอายุ 7–17 ปี
+    #          PHQ-A validated สำหรับอายุ 11–20 ปี (ใช้สำหรับ 18+ ในระบบนี้)
+    if current_user.birthdate is None:
+        pass  # ไม่มีวันเกิด — ไม่เพิ่มแบบประเมินซึมเศร้า
+    elif 7 <= age <= 17:
+        assessments.append({
+            "type": "CDI",
+            "name_th": "แบบประเมินภาวะซึมเศร้าในเด็กและวัยรุ่น (CDI)",
+            "question_count": 27,
+            "estimated_minutes": 10,
+        })
+    elif age >= 18:
+        assessments.append({
+            "type": "PHQA",
+            "name_th": "แบบประเมินภาวะซึมเศร้าวัยรุ่น (PHQ-A)",
+            "question_count": 11,
+            "estimated_minutes": 5,
+        })
+    return assessments
+
 
 @router.post("/autosave")
 async def autosave_draft(
     body: AutosaveRequest,
-    current_user: Student = Depends(get_current_student_mock),
+    current_user: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """บันทึก draft อัตโนมัติ"""
     await redis_client.setex(
         f"draft:{current_user.id}:{body.assessment_type}",
-        3600,  # 1 ชั่วโมง
+        3600,
         json.dumps(body.responses)
     )
     return {"saved": True}
 
+
 @router.post("/submit", response_model=AssessmentResponse)
 async def submit_assessment(
     body: AssessmentSubmitRequest,
-    current_user: Student = Depends(get_current_student_mock),
+    current_user: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """ส่งคำตอบ + คำนวณคะแนน + บันทึก + trigger alert"""
@@ -87,7 +115,6 @@ async def submit_assessment(
         term=get_current_term(),
     )
     db.add(assessment)
-    # ตรงนี้ต้อง flush เพื่อให้ได้ค่า id ออกมาใช้ก่อนที่จะไปต่อ หรือ commit เพื่อความมั่นใจ
     await db.commit()
     await db.refresh(assessment)
 
@@ -96,7 +123,7 @@ async def submit_assessment(
 
     # 4. Trigger alert
     await check_and_trigger_alert(db, assessment, current_user)
-    await db.commit() # สำหรับการสร้าง Alert ใน DB
+    await db.commit()
 
     # 5. Return ผล
     return AssessmentResponse(
@@ -109,17 +136,20 @@ async def submit_assessment(
         created_at=assessment.created_at,
     )
 
+
 @router.get("/history", response_model=list[AssessmentResponse])
 async def get_assessment_history(
-    current_user: Student = Depends(get_current_student_mock),
+    current_user: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """ดึงประวัติการทำประเมินของนักเรียนเรียงจากล่าสุด"""
-    res = await db.execute(select(Assessment).where(
-        Assessment.student_id == current_user.id
-    ).order_by(Assessment.created_at.desc()))
+    res = await db.execute(
+        select(Assessment)
+        .where(Assessment.student_id == current_user.id)
+        .order_by(Assessment.created_at.desc())
+    )
     assessments = res.scalars().all()
-    
+
     return [
         AssessmentResponse(
             id=str(a.id),
@@ -132,21 +162,24 @@ async def get_assessment_history(
         ) for a in assessments
     ]
 
+
 @router.get("/result/{assessment_id}", response_model=AssessmentResponse)
 async def get_assessment_result(
     assessment_id: str,
-    current_user: Student = Depends(get_current_student_mock),
+    current_user: Student = Depends(get_current_student),
     db: AsyncSession = Depends(get_db)
 ):
     """ดึงผลการประเมิน (สำหรับหน้า Result)"""
-    res = await db.execute(select(Assessment).where(
-        Assessment.id == assessment_id, 
-        Assessment.student_id == current_user.id
-    ))
+    res = await db.execute(
+        select(Assessment).where(
+            Assessment.id == assessment_id,
+            Assessment.student_id == current_user.id,
+        )
+    )
     assessment = res.scalar_one_or_none()
     if not assessment:
         raise HTTPException(status_code=404, detail="ไม่พบผลประเมิน")
-        
+
     return AssessmentResponse(
         id=str(assessment.id),
         assessment_type=assessment.assessment_type,

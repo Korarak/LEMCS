@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -11,7 +12,7 @@ interface School    { id: number; name: string; district_id: number; school_type
 interface District  { id: number; name: string; affiliation_id: number; }
 interface Affiliation { id: number; name: string; }
 
-const SCHOOL_TYPES = ["ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา", "เอกชน", "กศน."];
+const SCHOOL_TYPES = ["ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา", "เอกชน", "สกร.", "กศน."];
 const TYPE_BADGE: Record<string, string> = {
   มัธยมศึกษา: "badge-info",
   ประถมศึกษา: "badge-success",
@@ -36,7 +37,8 @@ export default function SchoolsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing,   setEditing]   = useState<School | null>(null);
   const [form,      setForm]      = useState({ name: "", affiliation_id: "", district_id: 0, school_type: "" });
-  const [saving,    setSaving]    = useState(false);
+  const [saving,       setSaving]      = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<School | null>(null);
 
   // Lookups
   const districtMap    = useMemo(() => new Map(districts.map(d    => [d.id, d.name])), [districts]);
@@ -118,6 +120,19 @@ export default function SchoolsPage() {
       toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/admin/schools/${deleteTarget.id}`);
+      mutate("/admin/schools");
+      toast(`ลบ ${deleteTarget.name} สำเร็จ`, "success");
+    } catch (e: any) {
+      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -254,7 +269,10 @@ export default function SchoolsPage() {
                     )}
                   </td>
                   <td className="text-center">
-                    <button className="btn btn-ghost btn-xs" onClick={() => openEdit(s)} title="แก้ไข">✏️</button>
+                    <div className="flex gap-1 justify-center">
+                      <button className="btn btn-ghost btn-xs" onClick={() => openEdit(s)} title="แก้ไข">✏️</button>
+                      <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(s)} title="ลบ">🗑️</button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -262,6 +280,16 @@ export default function SchoolsPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="ลบโรงเรียน"
+        message={`ต้องการลบ "${deleteTarget?.name}" ออกจากระบบ?\nโรงเรียนที่มีนักเรียนอยู่จะไม่สามารถลบได้`}
+        confirmLabel="ลบ"
+        confirmClass="btn-error"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Modal */}
       {modalOpen && (

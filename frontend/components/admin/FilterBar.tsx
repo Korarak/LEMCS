@@ -84,7 +84,7 @@ export default function FilterBar({ onFilterChange }: FilterBarProps) {
             onChange={e => handleChange("grade", e.target.value)}
           >
             <option value="">ทุกระดับชั้น</option>
-            {["ม.1","ม.2","ม.3","ม.4","ม.5","ม.6","ปวช.1","ปวช.2","ปวช.3"].map(g => (
+            {["ป.1","ป.2","ป.3","ป.4","ป.5","ป.6","ม.1","ม.2","ม.3","ม.4","ม.5","ม.6","ปวช.1","ปวช.2","ปวช.3","ปวส.1","ปวส.2"].map(g => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>

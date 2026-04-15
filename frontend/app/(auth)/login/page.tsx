@@ -433,11 +433,11 @@ export default function LoginPage() {
                 <FieldLabel n={3} done={codeOk}>รหัสประจำตัวนักเรียน</FieldLabel>
                 <input
                   type="text" inputMode="numeric" autoComplete="off"
-                  placeholder="เช่น 12345"
+                  placeholder="เช่น 12345678901"
                   value={studentCode}
                   onChange={e => setStudentCode(e.target.value.replace(/\D/g, ""))}
                   onFocus={() => setFocus("code")} onBlur={() => setFocus("")}
-                  maxLength={10}
+                  maxLength={11}
                   style={{
                     ...baseField(codeOk, focus === "code"),
                     textAlign: "center", letterSpacing: "0.12em", fontSize: "1rem",

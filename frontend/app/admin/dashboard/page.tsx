@@ -43,6 +43,14 @@ export default function AdminDashboardPage() {
     { refreshInterval: 60000 },
   );
 
+  // จำนวนนักเรียนทั้งหมดในระบบ (ไม่ขึ้นกับ filter — ใช้ยืนยัน completion rate)
+  const { data: studentCountData } = useSWR(
+    `/admin/students?limit=1&offset=0${qs ? `&${qs}` : ""}`,
+    fetcher,
+    { refreshInterval: 300000 },
+  );
+  const totalRegistered: number = studentCountData?.total ?? 0;
+
   const handleFilterChange = useCallback((f: DashboardFilters) => setFilters(f), []);
 
   // Severity distribution for doughnut
@@ -83,7 +91,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* ── Insight Panel ───────────────────────────────────────────── */}
-      <InsightPanel summaryData={summaryData} trendData={trendData} />
+      <InsightPanel summaryData={summaryData} trendData={trendData} totalRegistered={totalRegistered} />
 
       {/* ── Row 1: Severity Doughnut | Assessment Type Stacked Bar ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

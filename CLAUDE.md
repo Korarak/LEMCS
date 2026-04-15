@@ -108,9 +108,9 @@ System schema (`system.*`): `tenants` (province registry) + `super_admins`
 ### Assessment Scoring Logic
 - **ST-5**: Score 0–15, levels: normal/mild/moderate/severe. No suicide flag.
 - **PHQ-A**: Score 0–27 (Q1–Q9), levels: none/mild/moderate/severe/very_severe. Suicide flag if Q9 ≥ 1 or BQ1/BQ2 == true. Target: age 11–20.
-- **CDI**: Score 0–54 (27 questions). Questions split into Group A (ก=0,ข=1,ค=2) and Group B (ก=2,ข=1,ค=0 — inverted). Groups are fixed sets defined in `services/scoring/cdi.py`. Levels: normal (0–14) / clinical (≥15). No suicide flag; clinical level triggers alert. Target: age < 11.
+- **CDI**: Score 0–54 (27 questions). Questions split into Group A (ก=0,ข=1,ค=2) and Group B (ก=2,ข=1,ค=0 — inverted). Groups are fixed sets defined in `services/scoring/cdi.py`. Levels: normal (0–14) / clinical (≥15). No suicide flag; clinical level triggers alert. Target: age 7–17 (Maria Kovacs 1985, validated 7–17).
 
-**Routing rule**: age determines which depression assessment to use. If student age < 11 → CDI; if age 11–20 → PHQ-A. All students can take ST-5.
+**Routing rule**: age determines which depression assessment to use. If student age 7–17 → CDI; if age ≥ 18 → PHQ-A; age < 7 → ST-5 only. All students aged 7+ can take ST-5.
 
 **Alert notification channels** (in priority order): LINE Notify → Email SMTP → in-app dashboard notification.
 
