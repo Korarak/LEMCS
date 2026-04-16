@@ -254,23 +254,6 @@ export default function LoginPage() {
           ))}
         </div>
 
-        {/* Stats */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 8, paddingTop: 20,
-          borderTop: "1px solid rgba(255,255,255,0.15)",
-        }}>
-          {[
-            { n: "100K+", label: "นักเรียน" },
-            { n: "3",     label: "แบบประเมิน" },
-            { n: "จ.เลย", label: "จังหวัด" },
-          ].map(s => (
-            <div key={s.label}>
-              <div style={{ color: "white", fontWeight: 800, fontSize: "1.2rem" }}>{s.n}</div>
-              <div style={{ color: "rgba(199,210,254,0.65)", fontSize: "0.7rem", marginTop: 1 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
       </aside>
 
       {/* ════════════════════════════════════════════════════════

@@ -52,25 +52,26 @@ async def get_available_assessments(
             "estimated_minutes": 2,
         },
     ]
-    # routing rule: age 7-17 → CDI, age >= 18 → PHQ-A, age < 7 → ST-5 only
-    # อ้างอิง: CDI (Maria Kovacs, 1985) validated สำหรับอายุ 7–17 ปี
-    #          PHQ-A validated สำหรับอายุ 11–20 ปี (ใช้สำหรับ 18+ ในระบบนี้)
-    if current_user.birthdate is None:
-        pass  # ไม่มีวันเกิด — ไม่เพิ่มแบบประเมินซึมเศร้า
-    elif 7 <= age <= 17:
-        assessments.append({
-            "type": "CDI",
-            "name_th": "แบบประเมินภาวะซึมเศร้าในเด็กและวัยรุ่น (CDI)",
-            "question_count": 27,
-            "estimated_minutes": 10,
-        })
-    elif age >= 18:
-        assessments.append({
-            "type": "PHQA",
-            "name_th": "แบบประเมินภาวะซึมเศร้าวัยรุ่น (PHQ-A)",
-            "question_count": 11,
-            "estimated_minutes": 5,
-        })
+    # routing rule (validated ranges, may overlap):
+    #   CDI   → age 7–17  (Maria Kovacs 1985)
+    #   PHQ-A → age 11–20
+    #   ST-5  → all ages
+    #   overlap 11–17: both CDI and PHQ-A are available
+    if current_user.birthdate is not None:
+        if 7 <= age <= 17:
+            assessments.append({
+                "type": "CDI",
+                "name_th": "แบบประเมินภาวะซึมเศร้าในเด็กและวัยรุ่น (CDI)",
+                "question_count": 27,
+                "estimated_minutes": 10,
+            })
+        if 11 <= age <= 20:
+            assessments.append({
+                "type": "PHQA",
+                "name_th": "แบบประเมินภาวะซึมเศร้าวัยรุ่น (PHQ-A)",
+                "question_count": 11,
+                "estimated_minutes": 5,
+            })
     return assessments
 
 
