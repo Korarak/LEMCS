@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import CommitteeContent from "@/components/committee/CommitteeContent";
 
 const MONTHS = [
   { value: "01", label: "มกราคม" },
@@ -168,7 +169,7 @@ export default function LoginPage() {
 
   // ── Render ──────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", display: "flex" }}>
+    <div style={{ display: "flex", alignItems: "flex-start" }}>
 
       {/* ════════════════════════════════════════════════════════
           LEFT  ·  Brand panel  (lg+ only)
@@ -178,7 +179,8 @@ export default function LoginPage() {
         style={{
           width: 420, flexShrink: 0,
           background: "linear-gradient(155deg, #1e40af 0%, #4338ca 40%, #7c3aed 100%)",
-          padding: "48px 44px", position: "relative", overflow: "hidden",
+          padding: "48px 44px", position: "sticky", top: 0,
+          height: "100vh", overflow: "hidden",
         }}
       >
         {/* Decorative circles */}
@@ -272,14 +274,12 @@ export default function LoginPage() {
       </aside>
 
       {/* ════════════════════════════════════════════════════════
-          RIGHT  ·  Form panel
+          RIGHT  ·  Form + Committee
       ════════════════════════════════════════════════════════ */}
-      <main
-        style={{
-          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#f8fafc", padding: "32px 20px", overflowY: "auto",
-        }}
-      >
+      <div style={{ flex: 1, background: "#f8fafc", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+
+        {/* Form section */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "32px 20px" }}>
         <div className="w-full max-w-sm fade-in-up" style={{ maxWidth: 380 }}>
 
           {/* Mobile-only header */}
@@ -531,7 +531,29 @@ export default function LoginPage() {
           </div>
 
         </div>
-      </main>
+        </div>{/* /form section */}
+
+        {/* ════ Committee section ════ */}
+        <div style={{
+          borderTop: "1px solid #e2e8f0",
+          background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+          padding: "48px 24px 64px",
+        }}>
+          <div style={{ maxWidth: 860, margin: "0 auto" }}>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0f172a", margin: 0 }}>
+                คณะกรรมการดำเนินงาน
+              </h2>
+              <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: 6 }}>
+                ประกาศสำนักงานศึกษาธิการจังหวัดเลย — แต่งตั้งคณะทำงานป้องกันและแก้ไขปัญหาสุขภาพจิตนักเรียน
+                นักศึกษาในสถานศึกษาจังหวัดเลย (มีนาคม ๒๕๖๙)
+              </p>
+            </div>
+            <CommitteeContent />
+          </div>
+        </div>
+
+      </div>{/* /right column */}
     </div>
   );
 }

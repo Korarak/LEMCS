@@ -26,9 +26,10 @@ const NAV_SECTIONS = [
   {
     label: "ระบบ",
     items: [
-      { href: "/admin/users",     label: "ผู้ใช้งาน",   icon: "👤" },
-      { href: "/admin/import",    label: "นำเข้าข้อมูล", icon: "📥" },
-      { href: "/admin/settings",  label: "ตั้งค่าระบบ", icon: "⚙️" },
+      { href: "/admin/users",      label: "ผู้ใช้งาน",          icon: "👤" },
+      { href: "/admin/import",     label: "นำเข้าข้อมูล",        icon: "📥" },
+      { href: "/admin/committee",  label: "คณะกรรมการดำเนินงาน", icon: "📜" },
+      { href: "/admin/settings",   label: "ตั้งค่าระบบ",         icon: "⚙️" },
     ],
   },
 ];
@@ -69,7 +70,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Logo */}
           <div className="p-5 border-b border-base-200">
             <p className="font-bold text-primary text-xl tracking-tight">🧠 LEMCS</p>
-            <p className="text-xs text-base-content/50 mt-0.5">ระบบประเมินสุขภาพจิต</p>
+            <p className="text-xs text-base-content/70 mt-0.5 font-medium">Loei Educational MindCare System</p>
+            <p className="text-xs text-base-content/40 mt-0.5 leading-tight">ระบบคัดกรองสุขภาพจิตนักเรียน<br/>จังหวัดเลย</p>
           </div>
 
           {/* Nav */}
