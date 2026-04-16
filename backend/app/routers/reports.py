@@ -95,6 +95,10 @@ async def get_raw_data(
     district_id: int | None = Query(None),
     affiliation_id: int | None = Query(None),
     assessment_type: str | None = Query(None),
+    grade: str | None = Query(None),
+    gender: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     limit: int = Query(50),
     offset: int = Query(0),
     current_user = Depends(get_current_admin_user),
@@ -129,6 +133,18 @@ async def get_raw_data(
     if assessment_type:
         query += " AND a.assessment_type = :assessment_type"
         params["assessment_type"] = assessment_type
+    if grade:
+        query += " AND s.grade = :grade"
+        params["grade"] = grade
+    if gender:
+        query += " AND s.gender = :gender"
+        params["gender"] = gender
+    if date_from:
+        query += " AND a.created_at >= :date_from"
+        params["date_from"] = datetime.combine(date_from, datetime.min.time())
+    if date_to:
+        query += " AND a.created_at <= :date_to"
+        params["date_to"] = datetime.combine(date_to, datetime.max.time())
 
     query += " ORDER BY a.created_at DESC LIMIT :limit OFFSET :offset"
     params["limit"] = limit

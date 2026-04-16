@@ -1,29 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import { useAlerts } from "@/hooks/useAlerts";
+import { useState, useCallback } from "react";
+import { useAlerts, type AlertFilters } from "@/hooks/useAlerts";
 import AlertCard from "@/components/alerts/AlertCard";
+import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
 
-const STATUS_OPTIONS = [
-  { value: "", label: "ทุกสถานะ" },
-  { value: "new", label: "ใหม่" },
-  { value: "acknowledged", label: "รับทราบแล้ว" },
-  { value: "in_progress", label: "กำลังดำเนินการ" },
-  { value: "referred", label: "ส่งต่อแล้ว" },
-  { value: "closed", label: "ปิดเคส" },
-];
-
-const LEVEL_OPTIONS = [
-  { value: "", label: "ทุกระดับ" },
-  { value: "warning",  label: "⚠️ เฝ้าระวัง" },
-  { value: "urgent",   label: "🔴 เร่งด่วน" },
-  { value: "critical", label: "🚨 วิกฤต" },
-];
+const EMPTY_ALERTS: AlertFilters = {
+  status: "", level: "",
+  affiliation_id: "", district_id: "", school_id: "",
+  assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
+};
 
 export default function AlertsPage() {
-  const [statusFilter, setStatusFilter] = useState("");
-  const [levelFilter, setLevelFilter] = useState("");
-  const { alerts, isLoading, mutate } = useAlerts({ status: statusFilter, level: levelFilter });
+  const [alertFilters, setAlertFilters] = useState<AlertFilters>(EMPTY_ALERTS);
+
+  const handleFilterChange = useCallback((df: DashboardFilters) => {
+    setAlertFilters(prev => ({
+      ...prev,
+      affiliation_id:  df.affiliation_id,
+      district_id:     df.district_id,
+      school_id:       df.school_id,
+      assessment_type: df.assessment_type,
+      grade:           df.grade,
+      gender:          df.gender,
+      date_from:       df.date_from,
+      date_to:         df.date_to,
+    }));
+  }, []);
+
+  const { alerts, isLoading, mutate } = useAlerts(alertFilters);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
@@ -43,31 +48,36 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="card bg-base-100 shadow-sm border border-base-200">
-        <div className="card-body py-3 px-4 flex-row flex-wrap gap-3 items-center">
-          <span className="text-sm font-medium text-base-content/70">ตัวกรอง:</span>
+      {/* Filters — ใช้ FilterBar เดียวกับ Dashboard + แถวสถานะ/ระดับ */}
+      <FilterBar onFilterChange={handleFilterChange}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {/* สถานะ */}
           <select
-            className="select select-bordered select-sm min-w-32 bg-base-50"
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            className="select select-bordered select-sm w-full"
+            value={alertFilters.status}
+            onChange={e => setAlertFilters(prev => ({ ...prev, status: e.target.value }))}
           >
-            {STATUS_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
+            <option value="">ทุกสถานะ</option>
+            <option value="new">ใหม่</option>
+            <option value="acknowledged">รับทราบแล้ว</option>
+            <option value="in_progress">กำลังดำเนินการ</option>
+            <option value="referred">ส่งต่อแล้ว</option>
+            <option value="closed">ปิดเคส</option>
           </select>
 
+          {/* ระดับความรุนแรง */}
           <select
-            className="select select-bordered select-sm min-w-32 bg-base-50"
-            value={levelFilter}
-            onChange={e => setLevelFilter(e.target.value)}
+            className="select select-bordered select-sm w-full"
+            value={alertFilters.level}
+            onChange={e => setAlertFilters(prev => ({ ...prev, level: e.target.value }))}
           >
-            {LEVEL_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
+            <option value="">ทุกระดับ</option>
+            <option value="warning">⚠️ เฝ้าระวัง</option>
+            <option value="urgent">🔴 เร่งด่วน</option>
+            <option value="critical">🚨 วิกฤต</option>
           </select>
         </div>
-      </div>
+      </FilterBar>
 
       {/* Alert List */}
       {isLoading ? (

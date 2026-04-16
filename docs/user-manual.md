@@ -54,9 +54,8 @@ LEMCS (Loei Educational MindCare System) คือระบบประเมิ
 
 ```
 📸 SCREENSHOT-01: หน้าแรกของระบบ (URL bar แสดง lemcs.loeitech.ac.th)
-    [แทรกภาพ: screenshots/01-homepage.png]
 ```
-
+![คำอธิบาย](screenshots/01-homepage.png)
 ---
 
 ### 2.2 หน้าเข้าสู่ระบบนักเรียน

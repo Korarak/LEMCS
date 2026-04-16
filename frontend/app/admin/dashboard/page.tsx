@@ -16,7 +16,9 @@ const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 function buildQS(f: DashboardFilters): string {
   const p = new URLSearchParams();
-  if (f.school_id)       p.set("school_id",       f.school_id);
+  if (f.affiliation_id)  p.set("affiliation_id",   f.affiliation_id);
+  if (f.district_id)     p.set("district_id",      f.district_id);
+  if (f.school_id)       p.set("school_id",        f.school_id);
   if (f.assessment_type) p.set("assessment_type",  f.assessment_type);
   if (f.grade)           p.set("grade",            f.grade);
   if (f.gender)          p.set("gender",           f.gender);
@@ -27,7 +29,8 @@ function buildQS(f: DashboardFilters): string {
 
 export default function AdminDashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
-    school_id: "", assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
+    affiliation_id: "", district_id: "", school_id: "",
+    assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
   });
 
   const qs = useMemo(() => buildQS(filters), [filters]);
