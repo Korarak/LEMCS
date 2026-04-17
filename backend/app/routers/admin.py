@@ -195,6 +195,71 @@ async def get_schools(
         } for s in schools
     ]
 
+
+@router.get("/schools/stats")
+async def get_schools_stats(
+    district_id: int | None = Query(None),
+    affiliation_id: int | None = Query(None),
+    current_user = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """ดึงข้อมูลโรงเรียนพร้อมจำนวนนักเรียนและวันที่ import ล่าสุด"""
+    # Base school query with RBAC
+    school_query = select(School).join(District, School.district_id == District.id)
+
+    if current_user.role == "schooladmin":
+        school_query = school_query.where(School.id == current_user.school_id)
+    elif current_user.role == "commissionadmin":
+        if current_user.district_id:
+            school_query = school_query.where(School.district_id == current_user.district_id)
+        elif current_user.affiliation_id:
+            school_query = school_query.where(District.affiliation_id == current_user.affiliation_id)
+    else:
+        if district_id:
+            school_query = school_query.where(School.district_id == district_id)
+        if affiliation_id:
+            school_query = school_query.where(District.affiliation_id == affiliation_id)
+
+    school_result = await db.execute(school_query.order_by(School.name))
+    schools = school_result.scalars().all()
+    school_ids = [s.id for s in schools]
+
+    if not school_ids:
+        return []
+
+    # Batch query: count active students + last import date per school
+    stats_result = await db.execute(
+        select(
+            Student.school_id,
+            func.count(Student.id).label("student_count"),
+            func.max(Student.created_at).label("last_import_at"),
+        )
+        .where(Student.school_id.in_(school_ids), Student.is_active == True)
+        .group_by(Student.school_id)
+    )
+    stats_map = {row.school_id: row for row in stats_result}
+
+    # Fetch district and affiliation names
+    dist_result = await db.execute(
+        select(District, Affiliation.name.label("aff_name"))
+        .join(Affiliation, District.affiliation_id == Affiliation.id)
+    )
+    dist_map = {row.District.id: {"district_name": row.District.name, "affiliation_name": row.aff_name} for row in dist_result}
+
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "district_id": s.district_id,
+            "district_name": dist_map.get(s.district_id, {}).get("district_name", ""),
+            "affiliation_name": dist_map.get(s.district_id, {}).get("affiliation_name", ""),
+            "school_type": s.school_type,
+            "student_count": stats_map[s.id].student_count if s.id in stats_map else 0,
+            "last_import_at": stats_map[s.id].last_import_at.isoformat() if s.id in stats_map and stats_map[s.id].last_import_at else None,
+        }
+        for s in schools
+    ]
+
 @router.get("/students")
 async def get_students(
     school_id: int | None = Query(None),
@@ -453,10 +518,32 @@ async def delete_school(
     return {"deleted": True}
 
 # ──────────────────────────────────────────
-# CRUD: Users (systemadmin only)
+# Current admin user info
+# ──────────────────────────────────────────
+
+@router.get("/me")
+async def get_admin_me(
+    current_user = Depends(get_current_admin_user),
+):
+    """ดึงข้อมูล admin ที่ login อยู่"""
+    return {
+        "id": str(current_user.id),
+        "username": current_user.username,
+        "role": current_user.role,
+        "school_id": current_user.school_id,
+        "affiliation_id": current_user.affiliation_id,
+        "district_id": current_user.district_id,
+        "is_active": current_user.is_active,
+        "last_login": current_user.last_login.isoformat() if current_user.last_login else None,
+    }
+
+# ──────────────────────────────────────────
+# CRUD: Users (systemadmin + superadmin)
 # ──────────────────────────────────────────
 
 from app.models.db_models import User
+
+MANAGE_USERS_ROLES = ("systemadmin", "superadmin")
 
 class UserCreate(BaseModel):
     username: str
@@ -476,13 +563,21 @@ class UserUpdate(BaseModel):
 class UserResetPassword(BaseModel):
     new_password: str
 
+def _guard_superadmin_scope(current_user, target_role: str | None = None):
+    """superadmin ไม่สามารถจัดการ systemadmin ได้"""
+    if current_user.role == "superadmin" and target_role == "systemadmin":
+        raise HTTPException(403, "ศึกษาธิการจังหวัดไม่สามารถจัดการบัญชี systemadmin ได้")
+
 @router.get("/users")
 async def list_users(
     role: str | None = Query(None),
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role(*MANAGE_USERS_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(User).where(User.role != "student")
+    # superadmin ไม่เห็น systemadmin
+    if current_user.role == "superadmin":
+        query = query.where(User.role != "systemadmin")
     if role:
         query = query.where(User.role == role)
     result = await db.execute(query.order_by(User.role, User.username))
@@ -504,10 +599,11 @@ async def list_users(
 @router.post("/users")
 async def create_user(
     body: UserCreate,
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role(*MANAGE_USERS_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     import bcrypt
+    _guard_superadmin_scope(current_user, body.role)
     hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     user = User(
         username=body.username,
@@ -527,13 +623,16 @@ async def create_user(
 async def update_user(
     user_id: str,
     body: UserUpdate,
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role(*MANAGE_USERS_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "ไม่พบ user")
+    _guard_superadmin_scope(current_user, user.role)
+    if body.role:
+        _guard_superadmin_scope(current_user, body.role)
     for field, val in body.model_dump(exclude_unset=True).items():
         setattr(user, field, val)
     await db.commit()
@@ -543,7 +642,7 @@ async def update_user(
 async def reset_user_password(
     user_id: str,
     body: UserResetPassword,
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role(*MANAGE_USERS_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     import bcrypt
@@ -551,6 +650,7 @@ async def reset_user_password(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "ไม่พบ user")
+    _guard_superadmin_scope(current_user, user.role)
     user.hashed_password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
     return {"reset": True}
@@ -558,13 +658,14 @@ async def reset_user_password(
 @router.delete("/users/{user_id}")
 async def toggle_user_active(
     user_id: str,
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role(*MANAGE_USERS_ROLES)),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "ไม่พบ user")
+    _guard_superadmin_scope(current_user, user.role)
     if str(user.id) == str(current_user.id):
         raise HTTPException(400, "ไม่สามารถปิดบัญชีตัวเองได้")
     user.is_active = not user.is_active

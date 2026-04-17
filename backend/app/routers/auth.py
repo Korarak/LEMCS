@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime, timezone
 from app.database import get_db
 from app.schemas.auth import LoginRequest, OTPRequest, OTPVerifyRequest, TokenResponse
 from app.services.auth_service import (
@@ -62,7 +63,9 @@ async def login_bypass(body: OTPRequest, db: AsyncSession = Depends(get_db)):
     user = await get_user_by_student_id(db, student.id)
     if not user:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลผู้ใช้งานของนักเรียนนี้")
-        
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
 
@@ -72,6 +75,8 @@ async def verify_login_otp(body: OTPVerifyRequest, db: AsyncSession = Depends(ge
     user = await verify_otp(db, body.student_code, body.otp)
     if not user:
         raise HTTPException(status_code=401, detail="OTP ไม่ถูกต้องหรือหมดอายุ")
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
 
@@ -90,7 +95,9 @@ async def login_with_password(form_data: OAuth2PasswordRequestForm = Depends(), 
         
     if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง")
-        
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
 

@@ -19,7 +19,7 @@ interface AdminUser {
   last_login: string | null;
 }
 
-const ROLES = ["systemadmin", "superadmin", "commissionadmin", "schooladmin"];
+const ALL_ROLES = ["systemadmin", "superadmin", "commissionadmin", "schooladmin"];
 
 const ROLE_LABELS: Record<string, string> = {
   systemadmin:     "System Admin",
@@ -207,6 +207,13 @@ function DistrictSelector({
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function UsersPage() {
   const { toast } = useToast();
+
+  const { data: me } = useSWR<AdminUser>("/admin/me", fetcher);
+  const isSuperadmin = me?.role === "superadmin";
+  // superadmin ไม่สามารถจัดการ systemadmin ได้
+  const ROLES = isSuperadmin
+    ? ALL_ROLES.filter(r => r !== "systemadmin")
+    : ALL_ROLES;
 
   const { data: users, isLoading } = useSWR<AdminUser[]>("/admin/users", fetcher);
   const { data: schools      = [] } = useSWR("/admin/schools",       fetcher);
