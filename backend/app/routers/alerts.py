@@ -149,13 +149,24 @@ async def get_alert(
     db: AsyncSession = Depends(get_db)
 ):
     """รายละเอียด alert + ข้อมูลนักเรียน (anonymized บางส่วน)"""
-    result = await db.execute(
+    query = (
         select(Alert, Student, School.name.label("school_name"), Assessment)
         .join(Student, Alert.student_id == Student.id)
         .join(School, Student.school_id == School.id)
+        .join(District, School.district_id == District.id)
         .join(Assessment, Alert.assessment_id == Assessment.id)
         .where(Alert.id == alert_id)
     )
+    # Scope lock — ป้องกัน cross-school/district access
+    if current_user.role == "schooladmin":
+        query = query.where(Student.school_id == current_user.school_id)
+    elif current_user.role == "commissionadmin":
+        if current_user.district_id:
+            query = query.where(School.district_id == current_user.district_id)
+        elif current_user.affiliation_id:
+            query = query.where(District.affiliation_id == current_user.affiliation_id)
+
+    result = await db.execute(query)
     row = result.first()
     if not row:
         raise HTTPException(404, "ไม่พบ alert")
@@ -200,7 +211,23 @@ async def update_alert(
     db: AsyncSession = Depends(get_db)
 ):
     """อัปเดตสถานะ case + บันทึก note + assign ผู้รับผิดชอบ"""
-    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    # Scope-aware fetch — ป้องกัน cross-school update
+    query = (
+        select(Alert)
+        .join(Student, Alert.student_id == Student.id)
+        .join(School, Student.school_id == School.id)
+        .join(District, School.district_id == District.id)
+        .where(Alert.id == alert_id)
+    )
+    if current_user.role == "schooladmin":
+        query = query.where(Student.school_id == current_user.school_id)
+    elif current_user.role == "commissionadmin":
+        if current_user.district_id:
+            query = query.where(School.district_id == current_user.district_id)
+        elif current_user.affiliation_id:
+            query = query.where(District.affiliation_id == current_user.affiliation_id)
+
+    result = await db.execute(query)
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(404, "ไม่พบ alert")

@@ -5,6 +5,7 @@ import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import RoleGuard from "@/components/admin/RoleGuard";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -49,28 +50,30 @@ const EMPTY_FORM = {
 
 // ── Cascading school selector ──────────────────────────────────────────────
 function SchoolSelector({
-  value, onChange, affiliations, allDistricts,
+  value, onChange, affiliations,
 }: {
   value: string;
   onChange: (id: string) => void;
   affiliations: any[];
-  allDistricts: any[];
 }) {
   const [helperAff,  setHelperAff]  = useState("");
   const [helperDist, setHelperDist] = useState("");
 
-  const filteredDistricts = useMemo(
-    () => helperAff ? allDistricts.filter((d: any) => String(d.affiliation_id) === helperAff) : [],
-    [helperAff, allDistricts],
+  // Fetch districts dynamically from API (same pattern as FilterBar)
+  const { data: districtData, isLoading: distLoading } = useSWR(
+    helperAff ? `/admin/districts?affiliation_id=${helperAff}` : null,
+    fetcher,
   );
+  const filteredDistricts: any[] = districtData ?? [];
 
-  const { data: schools } = useSWR(
+  const { data: schools, isLoading: schoolLoading } = useSWR(
     helperDist ? `/admin/schools?district_id=${helperDist}` : null,
     fetcher,
   );
 
   return (
     <div className="space-y-2">
+      {/* ① สังกัด */}
       <div>
         <label className="label py-0.5">
           <span className="label-text text-xs text-base-content/60">① เลือกสังกัด</span>
@@ -87,34 +90,44 @@ function SchoolSelector({
         </select>
       </div>
 
+      {/* ② เขตพื้นที่ — fetched by affiliation */}
       {helperAff && (
         <div>
           <label className="label py-0.5">
             <span className="label-text text-xs text-base-content/60">② เลือกเขตพื้นที่</span>
           </label>
-          <select
-            className="select select-bordered select-sm w-full"
-            value={helperDist}
-            onChange={e => { setHelperDist(e.target.value); onChange(""); }}
-          >
-            <option value="">— เลือกเขตพื้นที่ —</option>
-            {filteredDistricts.map((d: any) => (
-              <option key={d.id} value={String(d.id)}>{d.name}</option>
-            ))}
-          </select>
+          {distLoading ? (
+            <div className="flex items-center gap-2 px-2 py-2 text-sm text-base-content/50">
+              <span className="loading loading-spinner loading-xs" /> กำลังโหลด…
+            </div>
+          ) : filteredDistricts.length === 0 ? (
+            <p className="text-sm text-base-content/50 px-2">ไม่พบเขตพื้นที่ในสังกัดนี้</p>
+          ) : (
+            <select
+              className="select select-bordered select-sm w-full"
+              value={helperDist}
+              onChange={e => { setHelperDist(e.target.value); onChange(""); }}
+            >
+              <option value="">— เลือกเขตพื้นที่ ({filteredDistricts.length} เขต) —</option>
+              {filteredDistricts.map((d: any) => (
+                <option key={d.id} value={String(d.id)}>{d.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
+      {/* ③ โรงเรียน — fetched by district */}
       {helperDist && (
         <div>
           <label className="label py-0.5">
             <span className="label-text text-xs text-base-content/60">③ เลือกโรงเรียน</span>
           </label>
-          {!schools ? (
+          {schoolLoading ? (
             <div className="flex items-center gap-2 px-2 py-2 text-sm text-base-content/50">
               <span className="loading loading-spinner loading-xs" /> กำลังโหลด…
             </div>
-          ) : schools.length === 0 ? (
+          ) : !schools || schools.length === 0 ? (
             <p className="text-sm text-base-content/50 px-2">ไม่พบโรงเรียนในเขตนี้</p>
           ) : (
             <select
@@ -145,19 +158,22 @@ function SchoolSelector({
 function DistrictSelector({
   affValue, distValue,
   onAffChange, onDistChange,
-  affiliations, allDistricts,
+  affiliations,
 }: {
   affValue: string; distValue: string;
   onAffChange: (id: string) => void; onDistChange: (id: string) => void;
-  affiliations: any[]; allDistricts: any[];
+  affiliations: any[];
 }) {
-  const filteredDistricts = useMemo(
-    () => affValue ? allDistricts.filter((d: any) => String(d.affiliation_id) === affValue) : [],
-    [affValue, allDistricts],
+  // Fetch districts dynamically from API instead of client-side filtering
+  const { data: districtData, isLoading: distLoading } = useSWR(
+    affValue ? `/admin/districts?affiliation_id=${affValue}` : null,
+    fetcher,
   );
+  const filteredDistricts: any[] = districtData ?? [];
 
   return (
     <div className="space-y-2">
+      {/* ① สังกัด */}
       <div>
         <label className="label py-0.5">
           <span className="label-text text-xs text-base-content/60">① เลือกสังกัด</span>
@@ -174,21 +190,32 @@ function DistrictSelector({
         </select>
       </div>
 
+      {/* ② เขตพื้นที่ — fetched by affiliation */}
       {affValue && (
         <div>
           <label className="label py-0.5">
             <span className="label-text text-xs text-base-content/60">② เลือกเขตพื้นที่</span>
           </label>
-          <select
-            className={`select select-bordered select-sm w-full ${!distValue ? "select-warning" : "select-success"}`}
-            value={distValue}
-            onChange={e => onDistChange(e.target.value)}
-          >
-            <option value="">— เลือกเขตพื้นที่ —</option>
-            {filteredDistricts.map((d: any) => (
-              <option key={d.id} value={String(d.id)}>{d.name}</option>
-            ))}
-          </select>
+          {distLoading ? (
+            <div className="flex items-center gap-2 px-2 py-2 text-sm text-base-content/50">
+              <span className="loading loading-spinner loading-xs" /> กำลังโหลด…
+            </div>
+          ) : filteredDistricts.length === 0 ? (
+            <p className="text-sm text-warning px-2 py-1">
+              ⚠️ ไม่พบเขตพื้นที่ในสังกัดนี้ — กรุณาเพิ่มเขตพื้นที่ก่อน
+            </p>
+          ) : (
+            <select
+              className={`select select-bordered select-sm w-full ${!distValue ? "select-warning" : "select-success"}`}
+              value={distValue}
+              onChange={e => onDistChange(e.target.value)}
+            >
+              <option value="">— เลือกเขตพื้นที่ ({filteredDistricts.length} เขต) —</option>
+              {filteredDistricts.map((d: any) => (
+                <option key={d.id} value={String(d.id)}>{d.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -196,7 +223,7 @@ function DistrictSelector({
         <div className="flex items-center gap-2 px-3 py-2 bg-success/10 border border-success/30 rounded-lg text-sm">
           <span className="text-success">✓</span>
           <span className="font-medium">
-            {filteredDistricts.find((d: any) => String(d.id) === distValue)?.name}
+            {filteredDistricts.find((d: any) => String(d.id) === distValue)?.name || `เขต #${distValue}`}
           </span>
         </div>
       )}
@@ -205,7 +232,7 @@ function DistrictSelector({
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────
-export default function UsersPage() {
+function UsersPageInner() {
   const { toast } = useToast();
 
   const { data: me } = useSWR<AdminUser>("/admin/me", fetcher);
@@ -669,9 +696,8 @@ export default function UsersPage() {
                   <div className="bg-base-200/50 rounded-xl p-3">
                     <SchoolSelector
                       value={form.school_id}
-                      onChange={id => setForm({ ...form, school_id: id })}
+                      onChange={id => setForm(f => ({ ...f, school_id: id }))}
                       affiliations={affiliations}
-                      allDistricts={districts}
                     />
                   </div>
                 </div>
@@ -687,10 +713,9 @@ export default function UsersPage() {
                     <DistrictSelector
                       affValue={form.affiliation_id}
                       distValue={form.district_id}
-                      onAffChange={id => setForm({ ...form, affiliation_id: id, district_id: "" })}
-                      onDistChange={id => setForm({ ...form, district_id: id })}
+                      onAffChange={id => setForm(f => ({ ...f, affiliation_id: id, district_id: "" }))}
+                      onDistChange={id => setForm(f => ({ ...f, district_id: id }))}
                       affiliations={affiliations}
-                      allDistricts={districts}
                     />
                   </div>
                 </div>
@@ -794,5 +819,13 @@ export default function UsersPage() {
         onCancel={closeConfirm}
       />
     </div>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <RoleGuard roles={["systemadmin", "superadmin"]}>
+      <UsersPageInner />
+    </RoleGuard>
   );
 }

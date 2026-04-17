@@ -83,6 +83,7 @@ class Assessment(Base):
     suicide_risk = Column(Boolean, default=False)
     academic_year = Column(Text)
     term = Column(Integer)
+    filled_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # NULL = นักเรียนกรอกเอง
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     student = relationship("Student")

@@ -23,7 +23,7 @@ interface SeverityChartProps {
   data: { severity_level: string; count: number }[];
 }
 
-export default function SeverityChart({ data }: SeverityChartProps) {
+export default function SeverityChart({ data, canvasId = "severity-chart" }: SeverityChartProps & { canvasId?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef  = useRef<Chart | null>(null);
 
@@ -76,7 +76,7 @@ export default function SeverityChart({ data }: SeverityChartProps) {
     <div>
       {/* Center label overlay */}
       <div className="relative">
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} id={canvasId} />
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ top: "-16px" }}>
           <p className="text-2xl font-bold tabular-nums leading-none">{total.toLocaleString()}</p>
           <p className="text-xs text-base-content/50 mt-0.5">รายการทั้งหมด</p>

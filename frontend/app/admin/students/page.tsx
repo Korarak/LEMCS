@@ -165,6 +165,40 @@ export default function StudentsPage() {
   const [saving,       setSaving]       = useState(false);
   const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
 
+  // ── National ID modal ────────────────────────────────────────────
+  const [nidTarget,    setNidTarget]    = useState<Student | null>(null);
+  const [nidValue,     setNidValue]     = useState("");
+  const [nidConfirm,   setNidConfirm]   = useState(false);
+  const [nidSaving,    setNidSaving]    = useState(false);
+  const [nidError,     setNidError]     = useState("");
+
+  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidError(""); };
+
+  function validateThaiId(id: string): string {
+    const s = id.replace(/[-\s]/g, "");
+    if (/^[Gg]\d{12}$/.test(s)) return "";
+    if (!/^\d{13}$/.test(s)) return "ต้องเป็นตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก)";
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += parseInt(s[i]) * (13 - i);
+    const check = (11 - (sum % 11)) % 10;
+    if (check !== parseInt(s[12])) return "เลข checksum ไม่ถูกต้อง — กรุณาตรวจสอบอีกครั้ง";
+    return "";
+  }
+
+  const handleNidSave = async () => {
+    if (!nidTarget) return;
+    const err = validateThaiId(nidValue);
+    if (err) { setNidError(err); return; }
+    setNidSaving(true);
+    try {
+      await api.patch(`/admin/students/${nidTarget.id}/national-id`, { national_id: nidValue.replace(/[-\s]/g, "") });
+      setNidTarget(null); mutate(swrKey);
+      toast("อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
+    } catch (e: any) {
+      setNidError(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+    } finally { setNidSaving(false); }
+  };
+
   const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setModal("add"); };
   const openEdit = (s: Student) => {
     setEditing(s);
@@ -425,6 +459,7 @@ export default function StudentsPage() {
                 <td>
                   <div className="flex gap-1 justify-center">
                     <button className="btn btn-ghost btn-xs" onClick={() => openEdit(s)} title="แก้ไข">✏️</button>
+                    <button className="btn btn-ghost btn-xs" onClick={() => openNid(s)} title="แก้ไขเลขบัตรประชาชน">🪪</button>
                     <button className={`btn btn-ghost btn-xs ${s.is_active ? "text-error" : "text-success"}`}
                       onClick={() => setToggleTarget(s)} title={s.is_active ? "ปิดบัญชี" : "เปิดบัญชี"}>
                       {s.is_active ? "🚫" : "✅"}
@@ -517,6 +552,63 @@ export default function StudentsPage() {
         onConfirm={doToggle}
         onCancel={() => setToggleTarget(null)}
       />
+
+      {/* National ID correction modal */}
+      {nidTarget && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <h3 className="font-bold text-lg mb-1">🪪 แก้ไขเลขบัตรประชาชน</h3>
+            <p className="text-sm text-base-content/60 mb-4">
+              {nidTarget.first_name} {nidTarget.last_name} (รหัส {nidTarget.student_code})
+            </p>
+
+            {/* PDPA warning */}
+            <div className="alert alert-warning text-xs mb-4 py-2">
+              <span>⚠️</span>
+              <span>ข้อมูลนี้เป็น PII ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล — การแก้ไขจะถูกบันทึก audit log ทุกครั้ง</span>
+            </div>
+
+            <div className="form-control">
+              <label className="label"><span className="label-text font-medium">เลขบัตรประชาชนใหม่ *</span></label>
+              <input
+                className={`input input-bordered font-mono tracking-widest ${nidError ? "input-error" : ""}`}
+                placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
+                value={nidValue}
+                maxLength={17}
+                onChange={e => { setNidValue(e.target.value); setNidError(""); setNidConfirm(false); }}
+              />
+              {nidError && <label className="label"><span className="label-text-alt text-error">{nidError}</span></label>}
+              <label className="label"><span className="label-text-alt text-base-content/50">ตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก) สำหรับนักเรียนไร้สัญชาติ</span></label>
+            </div>
+
+            {/* Confirmation step */}
+            {!nidConfirm ? (
+              <div className="modal-action">
+                <button className="btn btn-ghost" onClick={() => setNidTarget(null)}>ยกเลิก</button>
+                <button className="btn btn-warning" onClick={() => {
+                  const err = validateThaiId(nidValue);
+                  if (err) { setNidError(err); return; }
+                  setNidConfirm(true);
+                }}>ตรวจสอบ →</button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-base-200 rounded-lg px-4 py-3 text-sm">
+                  <p className="font-medium mb-1">ยืนยันการเปลี่ยนแปลง</p>
+                  <p className="font-mono text-base">{nidValue.replace(/[-\s]/g, "").replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, "$1-$2-$3-$4-$5")}</p>
+                </div>
+                <div className="modal-action">
+                  <button className="btn btn-ghost" onClick={() => setNidConfirm(false)}>← แก้ไข</button>
+                  <button className="btn btn-error" onClick={handleNidSave} disabled={nidSaving}>
+                    {nidSaving ? <span className="loading loading-spinner loading-xs"/> : "ยืนยันบันทึก"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <form method="dialog" className="modal-backdrop"><button onClick={() => setNidTarget(null)}>close</button></form>
+        </dialog>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import RoleGuard from "@/components/admin/RoleGuard";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -360,7 +361,7 @@ function DistrictSection({
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-export default function OrganizationPage() {
+function OrganizationPageInner() {
   const { data: affiliations = [], isLoading: loadAff } = useSWR<Affiliation[]>("/admin/affiliations", fetcher);
   const { data: districts    = [], isLoading: loadDist } = useSWR<District[]>("/admin/districts", fetcher);
 
@@ -388,5 +389,13 @@ export default function OrganizationPage() {
         <DistrictSection    districts={districts} affiliations={affiliations} isLoading={loadDist} />
       </div>
     </div>
+  );
+}
+
+export default function OrganizationPage() {
+  return (
+    <RoleGuard roles={["systemadmin"]}>
+      <OrganizationPageInner />
+    </RoleGuard>
   );
 }

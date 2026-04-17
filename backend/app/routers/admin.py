@@ -4,7 +4,8 @@ from sqlalchemy import select, func, delete, or_
 from pydantic import BaseModel
 from app.database import get_db
 from app.deps import get_current_admin_user, require_role
-from app.models.db_models import School, Student, District, Affiliation, User
+from app.models.db_models import School, Student, District, Affiliation, User, AuditLog
+from app.services.encryption import encrypt_pii, hash_pii
 
 router = APIRouter()
 
@@ -450,6 +451,115 @@ async def toggle_student_active(
     await db.commit()
     return {"id": str(stu.id), "is_active": stu.is_active, "toggled": True}
 
+
+class NationalIdUpdate(BaseModel):
+    national_id: str
+
+
+@router.patch("/students/{student_id}/national-id")
+async def update_student_national_id(
+    student_id: str,
+    body: NationalIdUpdate,
+    current_user = Depends(require_role("systemadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """แก้ไขเลขบัตรประชาชนนักเรียน — บันทึก audit log ทุกครั้ง (PDPA)"""
+    from app.services.import_service import normalize_national_id
+
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    stu = result.scalar_one_or_none()
+    if not stu:
+        raise HTTPException(404, "ไม่พบนักเรียน")
+
+    nid, err = normalize_national_id(body.national_id.strip())
+    if err:
+        raise HTTPException(400, f"เลขบัตรประชาชนไม่ถูกต้อง: {err}")
+    if not nid:
+        raise HTTPException(400, "กรุณาระบุเลขบัตรประชาชน")
+
+    # Check duplicate hash (another student already has this ID)
+    new_hash = hash_pii(nid)
+    dup = await db.execute(
+        select(Student).where(Student.national_id_hash == new_hash, Student.id != student_id)
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(409, "เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว")
+
+    stu.national_id = encrypt_pii(nid)
+    stu.national_id_hash = new_hash
+
+    log = AuditLog(
+        user_id=current_user.id,
+        action="update_national_id",
+        resource=f"student:{student_id}",
+        details={"updated_by": str(current_user.id), "student_code": stu.student_code},
+    )
+    db.add(log)
+    await db.commit()
+    return {"id": str(stu.id), "updated": True}
+
+
+# ──────────────────────────────────────────
+# Audit Logs
+# ──────────────────────────────────────────
+
+@router.get("/audit-logs")
+async def get_audit_logs(
+    action: str | None = Query(None),
+    resource_prefix: str | None = Query(None),
+    user_id: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0),
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ดึง audit log พร้อม username ของผู้กระทำ"""
+    from datetime import datetime, timezone
+
+    query = (
+        select(AuditLog, User.username, User.role)
+        .outerjoin(User, AuditLog.user_id == User.id)
+    )
+
+    if action:
+        query = query.where(AuditLog.action == action)
+    if resource_prefix:
+        query = query.where(AuditLog.resource.ilike(f"{resource_prefix}%"))
+    if user_id:
+        query = query.where(AuditLog.user_id == user_id)
+    if date_from:
+        query = query.where(AuditLog.created_at >= datetime.fromisoformat(date_from))
+    if date_to:
+        query = query.where(AuditLog.created_at <= datetime.fromisoformat(date_to))
+
+    count_q = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+
+    rows = (await db.execute(
+        query.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+    )).all()
+
+    return {
+        "total": total,
+        "items": [
+            {
+                "id": r.AuditLog.id,
+                "user_id": str(r.AuditLog.user_id) if r.AuditLog.user_id else None,
+                "username": r.username,
+                "role": r.role,
+                "action": r.AuditLog.action,
+                "resource": r.AuditLog.resource,
+                "details": r.AuditLog.details,
+                "ip_address": r.AuditLog.ip_address,
+                "created_at": r.AuditLog.created_at.isoformat() if r.AuditLog.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 # ──────────────────────────────────────────
 # CRUD: Schools
 # ──────────────────────────────────────────
@@ -838,3 +948,208 @@ async def download_template(
     )
 
 
+# ──────────────────────────────────────────
+# Proxy Assessment (ครูกรอกแทนนักเรียน)
+# ──────────────────────────────────────────
+
+@router.get("/proxy-assess/students")
+async def proxy_assess_students(
+    grade: str | None = Query(None),
+    classroom: str | None = Query(None),
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    รายชื่อนักเรียนพร้อมสถานะแบบประเมินในภาคเรียนนี้
+    schooladmin เห็นเฉพาะโรงเรียนตัวเอง
+    """
+    from app.routers.assessments import get_current_academic_year, get_current_term
+    from datetime import date as dt
+
+    academic_year = get_current_academic_year()
+    term = get_current_term()
+
+    query = select(Student).where(
+        Student.school_id == current_user.school_id,
+        Student.is_active == True,
+    )
+    if grade:
+        query = query.where(Student.grade == grade)
+    if classroom:
+        query = query.where(Student.classroom == classroom)
+    query = query.order_by(Student.grade, Student.classroom, Student.first_name)
+
+    result = await db.execute(query)
+    students = result.scalars().all()
+    if not students:
+        return []
+
+    student_ids = [s.id for s in students]
+
+    # ดึง assessment ที่ทำแล้วในภาคเรียนนี้ (ล่าสุดต่อ type)
+    done_result = await db.execute(
+        select(
+            Assessment.student_id,
+            Assessment.assessment_type,
+            Assessment.severity_level,
+            Assessment.score,
+            Assessment.filled_by_user_id,
+            Assessment.created_at,
+        )
+        .where(
+            Assessment.student_id.in_(student_ids),
+            Assessment.academic_year == academic_year,
+            Assessment.term == term,
+        )
+        .order_by(Assessment.created_at.desc())
+    )
+    done_rows = done_result.all()
+
+    # pivot: student_id → {type: latest_row}
+    done_map: dict = {}
+    for row in done_rows:
+        sid = str(row.student_id)
+        if sid not in done_map:
+            done_map[sid] = {}
+        atype = row.assessment_type
+        if atype not in done_map[sid]:
+            done_map[sid][atype] = {
+                "severity_level": row.severity_level,
+                "score": row.score,
+                "filled_by_proxy": row.filled_by_user_id is not None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+
+    today = dt.today()
+
+    def calc_age(s: Student) -> int | None:
+        if not s.birthdate:
+            return None
+        age = today.year - s.birthdate.year
+        if (today.month, today.day) < (s.birthdate.month, s.birthdate.day):
+            age -= 1
+        return age
+
+    def available_types(age: int | None) -> list[str]:
+        if age is None:
+            return []
+        types = []
+        if age >= 15:
+            types.append("ST5")
+        if 7 <= age <= 17:
+            types.append("CDI")
+        if 11 <= age <= 20:
+            types.append("PHQA")
+        return types
+
+    items = []
+    for s in students:
+        age = calc_age(s)
+        types = available_types(age)
+        sid = str(s.id)
+        items.append({
+            "id": sid,
+            "student_code": s.student_code,
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "gender": s.gender,
+            "grade": s.grade,
+            "classroom": s.classroom,
+            "birthdate": s.birthdate.isoformat() if s.birthdate else None,
+            "age": age,
+            "available_types": types,
+            "assessments_done": done_map.get(sid, {}),
+        })
+    return items
+
+
+class ProxyAssessSubmit(BaseModel):
+    student_id: str
+    assessment_type: str
+    responses: dict
+
+
+@router.post("/proxy-assess/submit")
+async def proxy_assess_submit(
+    body: ProxyAssessSubmit,
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ส่งคำตอบแทนนักเรียน — ตรวจสอบ scope + อายุ + scoring + alert เหมือนปกติ
+    """
+    from app.services.scoring import calculate_score
+    from app.services.alert_service import check_and_trigger_alert
+    from app.routers.assessments import get_current_academic_year, get_current_term
+    from datetime import date as dt
+
+    # 1. ดึงนักเรียนและตรวจสอบ scope
+    stu_result = await db.execute(select(Student).where(Student.id == body.student_id))
+    student = stu_result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(404, "ไม่พบนักเรียน")
+    if student.school_id != current_user.school_id:
+        raise HTTPException(403, "นักเรียนไม่ได้อยู่ในโรงเรียนของท่าน")
+
+    # 2. ตรวจสอบเงื่อนไขอายุ
+    if student.birthdate:
+        today = dt.today()
+        age = today.year - student.birthdate.year
+        if (today.month, today.day) < (student.birthdate.month, student.birthdate.day):
+            age -= 1
+        atype = body.assessment_type.upper()
+        age_ok = (
+            (atype == "ST5"  and age >= 15) or
+            (atype == "CDI"  and 7 <= age <= 17) or
+            (atype == "PHQA" and 11 <= age <= 20)
+        )
+        if not age_ok:
+            raise HTTPException(400, f"แบบประเมิน {body.assessment_type} ไม่เหมาะสมกับอายุ {age} ปี")
+
+    # 3. คำนวณคะแนน
+    try:
+        result = calculate_score(body.assessment_type, body.responses)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    # 4. บันทึก
+    assessment = Assessment(
+        student_id=student.id,
+        assessment_type=body.assessment_type,
+        responses=body.responses,
+        score=result["score"],
+        severity_level=result["severity_level"],
+        suicide_risk=result.get("suicide_risk", False),
+        academic_year=get_current_academic_year(),
+        term=get_current_term(),
+        filled_by_user_id=current_user.id,
+    )
+    db.add(assessment)
+    await db.commit()
+    await db.refresh(assessment)
+
+    # 5. Audit log
+    log = AuditLog(
+        user_id=current_user.id,
+        action="proxy_assessment",
+        resource=f"student:{student.id}",
+        details={
+            "assessment_type": body.assessment_type,
+            "score": result["score"],
+            "severity_level": result["severity_level"],
+            "assessment_id": str(assessment.id),
+        },
+    )
+    db.add(log)
+
+    # 6. Trigger alert (เหมือนนักเรียนกรอกเอง)
+    await check_and_trigger_alert(db, assessment, student)
+    await db.commit()
+
+    return {
+        "id": str(assessment.id),
+        "score": result["score"],
+        "severity_level": result["severity_level"],
+        "suicide_risk": result.get("suicide_risk", False),
+        "assessment_type": body.assessment_type,
+    }

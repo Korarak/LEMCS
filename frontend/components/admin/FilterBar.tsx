@@ -45,12 +45,10 @@ export default function FilterBar({ onFilterChange, children }: FilterBarProps) 
   const { data: schools } = useSWR(schoolUrl, fetcher);
 
   const update = useCallback((patch: Partial<DashboardFilters>) => {
-    setFilters(prev => {
-      const next = { ...prev, ...patch };
-      onFilterChange(next);
-      return next;
-    });
-  }, [onFilterChange]);
+    const next = { ...filters, ...patch };
+    setFilters(next);
+    onFilterChange(next);
+  }, [filters, onFilterChange]);
 
   const handleReset = () => {
     setFilters(EMPTY);

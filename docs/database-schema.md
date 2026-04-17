@@ -1,7 +1,7 @@
 # Database Schema — LEMCS
 ## Loei Educational MindCare System
 
-> อ้างอิงจาก [db_models.py](file:///d:/@LEMCS/backend/app/models/db_models.py) — อัปเดตล่าสุด 27 มี.ค. 2569
+> อ้างอิงจาก [db_models.py](file:///d:/@LEMCS/backend/app/models/db_models.py) — อัปเดตล่าสุด 17 เม.ย. 2569
 
 ---
 
@@ -21,6 +21,7 @@ erDiagram
     users }o--o| districts : scoped-by
     users ||--o{ notifications : receives
     users ||--o{ audit_logs : performs
+    users }o--o{ assessments : filled-by-proxy
     alerts }o--o| users : assigned-to
 
     affiliations {
@@ -75,6 +76,7 @@ erDiagram
         bool suicide_risk
         text academic_year
         int term
+        uuid filled_by_user_id FK
         timestamptz created_at
     }
     alerts {
@@ -206,10 +208,11 @@ erDiagram
 | `assessment_type` | TEXT | NOT NULL | `ST5` (ความเครียด), `PHQA` (ซึมเศร้า), `CDI` (ซึมเศร้าเด็ก) |
 | `responses` | JSONB | NOT NULL | คำตอบแต่ละข้อ `{"answers": [0,1,2,...]}` |
 | `score` | INTEGER | NOT NULL | คะแนนรวม |
-| `severity_level` | TEXT | NOT NULL | `normal` \| `mild` \| `moderate` \| `severe` \| `very_severe` |
+| `severity_level` | TEXT | NOT NULL | `normal` \| `mild` \| `moderate` \| `severe` \| `very_severe` \| `clinical` |
 | `suicide_risk` | BOOLEAN | default false | ความเสี่ยงฆ่าตัวตาย |
 | `academic_year` | TEXT | | ปีการศึกษา เช่น "2567" |
 | `term` | INTEGER | | ภาคเรียน (1 หรือ 2) |
+| `filled_by_user_id` | UUID | FK → users, nullable | NULL = นักเรียนกรอกเอง / มีค่า = ครูกรอกแทน (proxy assessment) |
 | `created_at` | TIMESTAMPTZ | default now() | |
 
 ---
@@ -250,11 +253,26 @@ erDiagram
 |---|---|---|---|
 | `id` | INTEGER | PK, auto increment | |
 | `user_id` | UUID | FK → users | ผู้กระทำ |
-| `action` | TEXT | NOT NULL | เช่น `view_alert`, `update_alert`, `login` |
+| `action` | TEXT | NOT NULL | `view_alert` \| `update_alert` \| `update_national_id` \| `proxy_assessment` |
 | `resource` | TEXT | | เช่น `alert:uuid`, `student:uuid` |
 | `details` | JSONB | | ข้อมูลเพิ่มเติม |
 | `ip_address` | TEXT | | IP ของผู้ใช้ |
 | `created_at` | TIMESTAMPTZ | default now() | |
+
+---
+
+---
+
+## Proxy Assessment
+
+`assessments.filled_by_user_id` เป็น column ที่เพิ่มใน v1.2 สำหรับฟีเจอร์ "ครูกรอกแทนนักเรียน":
+
+| ค่า filled_by_user_id | ความหมาย |
+|----------------------|---------|
+| `NULL` | นักเรียน login แล้วกรอกเอง |
+| UUID (FK → users) | ครู/schooladmin กรอกแทน ระบุ user ที่กรอก |
+
+Migration: `ALTER TABLE assessments ADD COLUMN IF NOT EXISTS filled_by_user_id UUID REFERENCES users(id)` (ใน main.py lifespan)
 
 ---
 

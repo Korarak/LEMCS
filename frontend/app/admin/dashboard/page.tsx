@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import StatsCards          from "@/components/admin/StatsCards";
 import SeverityChart       from "@/components/admin/SeverityChart";
@@ -10,53 +11,110 @@ import AssessmentTypeChart from "@/components/admin/AssessmentTypeChart";
 import RiskProgressBars    from "@/components/admin/RiskProgressBars";
 import RecentAlerts        from "@/components/admin/RecentAlerts";
 import InsightPanel        from "@/components/admin/InsightPanel";
+import AlertStatusSummary  from "@/components/admin/AlertStatusSummary";
+import RiskFunnelChart     from "@/components/admin/RiskFunnelChart";
+import MoMDeltaChart       from "@/components/admin/MoMDeltaChart";
 import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 function buildQS(f: DashboardFilters): string {
   const p = new URLSearchParams();
-  if (f.affiliation_id)  p.set("affiliation_id",   f.affiliation_id);
-  if (f.district_id)     p.set("district_id",      f.district_id);
-  if (f.school_id)       p.set("school_id",        f.school_id);
-  if (f.assessment_type) p.set("assessment_type",  f.assessment_type);
-  if (f.grade)           p.set("grade",            f.grade);
-  if (f.gender)          p.set("gender",           f.gender);
-  if (f.date_from)       p.set("date_from",        f.date_from);
-  if (f.date_to)         p.set("date_to",          f.date_to);
+  if (f.affiliation_id)  p.set("affiliation_id",  f.affiliation_id);
+  if (f.district_id)     p.set("district_id",     f.district_id);
+  if (f.school_id)       p.set("school_id",       f.school_id);
+  if (f.assessment_type) p.set("assessment_type", f.assessment_type);
+  if (f.grade)           p.set("grade",           f.grade);
+  if (f.gender)          p.set("gender",          f.gender);
+  if (f.date_from)       p.set("date_from",       f.date_from);
+  if (f.date_to)         p.set("date_to",         f.date_to);
   return p.toString();
 }
+
+function downloadCanvasAsPng(canvasId: string, filename: string) {
+  const canvas = document.getElementById(canvasId) as HTMLCanvasElement | null;
+  if (!canvas) return;
+  const link = document.createElement("a");
+  link.download = `${filename}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+async function exportReport(qs: string, format: "pdf" | "excel") {
+  try {
+    const params = Object.fromEntries(new URLSearchParams(qs));
+    const res = await api.post(`/reports/export/${format}`, params, { responseType: "blob" });
+    const ext  = format === "pdf" ? "pdf" : "xlsx";
+    const mime = format === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const blob = new Blob([res.data], { type: mime });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href     = url;
+    link.download = `lemcs_report.${ext}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    alert("ส่งออกไม่สำเร็จ กรุณาลองใหม่");
+  }
+}
+
+function SectionHeader({ icon, label, description, accent = "border-primary" }: {
+  icon: string; label: string; description: string; accent?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-3 border-l-4 ${accent} pl-3`}>
+      <span className="text-xl">{icon}</span>
+      <div>
+        <h2 className="font-bold text-base leading-snug">{label}</h2>
+        <p className="text-xs text-base-content/45 leading-tight">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function DownloadBtn({ canvasId, filename }: { canvasId: string; filename: string }) {
+  return (
+    <button
+      onClick={() => downloadCanvasAsPng(canvasId, filename)}
+      className="btn btn-ghost btn-xs gap-1 text-base-content/40 hover:text-base-content"
+      title="ดาวน์โหลดกราฟ PNG"
+    >
+      ↓ PNG
+    </button>
+  );
+}
+
+const QUICK_ACTIONS = [
+  { href: "/admin/alerts",   label: "จัดการแจ้งเตือน", icon: "🚨", cls: "btn-error"   },
+  { href: "/admin/reports",  label: "ส่งออกรายงาน",   icon: "📋", cls: "btn-outline" },
+  { href: "/admin/students", label: "รายชื่อนักเรียน", icon: "👥", cls: "btn-outline" },
+  { href: "/admin/import",   label: "นำเข้าข้อมูล",   icon: "📥", cls: "btn-outline" },
+];
 
 export default function AdminDashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
     affiliation_id: "", district_id: "", school_id: "",
     assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
   });
+  const [exporting, setExporting] = useState<"pdf"|"excel"|null>(null);
 
   const qs = useMemo(() => buildQS(filters), [filters]);
 
   const { data: summaryData } = useSWR(
-    `/reports/summary${qs ? `?${qs}` : ""}`,
-    fetcher,
-    { refreshInterval: 60000 },
+    `/reports/summary${qs ? `?${qs}` : ""}`, fetcher, { refreshInterval: 60000 },
   );
   const { data: trendData } = useSWR(
-    `/reports/trend${qs ? `?${qs}` : ""}`,
-    fetcher,
-    { refreshInterval: 60000 },
+    `/reports/trend${qs ? `?${qs}` : ""}`, fetcher, { refreshInterval: 60000 },
   );
-
-  // จำนวนนักเรียนทั้งหมดในระบบ (ไม่ขึ้นกับ filter — ใช้ยืนยัน completion rate)
   const { data: studentCountData } = useSWR(
-    `/admin/students?limit=1&offset=0${qs ? `&${qs}` : ""}`,
-    fetcher,
-    { refreshInterval: 300000 },
+    `/admin/students?limit=1&offset=0${qs ? `&${qs}` : ""}`, fetcher, { refreshInterval: 300000 },
   );
-  const totalRegistered: number = studentCountData?.total ?? 0;
 
+  const totalRegistered: number = studentCountData?.total ?? 0;
   const handleFilterChange = useCallback((f: DashboardFilters) => setFilters(f), []);
 
-  // Severity distribution for doughnut
   const severityChartData = useMemo(() => {
     if (!summaryData?.data) return [];
     const map = new Map<string, number>();
@@ -66,110 +124,228 @@ export default function AdminDashboardPage() {
     return Array.from(map.entries()).map(([severity_level, count]) => ({ severity_level, count }));
   }, [summaryData]);
 
-  // Raw rows for stacked bar and progress bars
   const summaryRows: any[] = summaryData?.data ?? [];
+
+  const handleExport = async (format: "pdf" | "excel") => {
+    setExporting(format);
+    await exportReport(qs, format);
+    setExporting(null);
+  };
 
   const now = new Date().toLocaleDateString("th-TH", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-8 pb-12 max-w-screen-xl print:space-y-4">
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">ภาพรวมผลการประเมิน</h1>
           <p className="text-base-content/50 text-sm">ข้อมูล จ.เลย ปีการศึกษา 2567 ภาคเรียนที่ 2</p>
         </div>
-        <p className="text-xs text-base-content/40 shrink-0">{now}</p>
+
+        {/* Export toolbar */}
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <button
+            onClick={() => window.print()}
+            className="btn btn-outline btn-sm gap-1.5"
+          >
+            🖨️ พิมพ์หน้านี้
+          </button>
+          <button
+            onClick={() => handleExport("excel")}
+            disabled={exporting !== null}
+            className="btn btn-outline btn-sm gap-1.5 text-success border-success/40 hover:bg-success hover:border-success"
+          >
+            {exporting === "excel" ? <span className="loading loading-spinner loading-xs" /> : "📊"}
+            Excel
+          </button>
+          <button
+            onClick={() => handleExport("pdf")}
+            disabled={exporting !== null}
+            className="btn btn-outline btn-sm gap-1.5 text-error border-error/40 hover:bg-error hover:border-error"
+          >
+            {exporting === "pdf" ? <span className="loading loading-spinner loading-xs" /> : "📄"}
+            PDF
+          </button>
+          <p className="text-xs text-base-content/40 hidden sm:block">{now}</p>
+        </div>
       </div>
 
-      {/* ── Filter ──────────────────────────────────────────────────── */}
-      <FilterBar onFilterChange={handleFilterChange} />
-
-      {/* ── KPI Cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCards queryString={qs} />
+      {/* ── Filter ─────────────────────────────────────────────────────── */}
+      <div className="print:hidden">
+        <FilterBar onFilterChange={handleFilterChange} />
       </div>
 
-      {/* ── Insight Panel ───────────────────────────────────────────── */}
-      <InsightPanel summaryData={summaryData} trendData={trendData} totalRegistered={totalRegistered} />
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION A — ผู้บริหาร
+      ══════════════════════════════════════════════════════════════════ */}
+      <section className="space-y-4">
+        <SectionHeader
+          icon="📊"
+          label="สรุปภาพรวมผู้บริหาร"
+          description="ตัวเลขหลักและข้อสังเกตสำคัญ — อัปเดตทุก 1 นาที"
+          accent="border-primary"
+        />
 
-      {/* ── Row 1: Severity Doughnut | Assessment Type Stacked Bar ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <div className="card bg-base-100 shadow">
-          <div className="card-body">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="card-title text-sm">การกระจายระดับความเสี่ยง</h2>
-              <span className="badge badge-sm badge-ghost">Doughnut</span>
-            </div>
-            <p className="text-xs text-base-content/40 mb-3">
-              สัดส่วนผลประเมินทุกแบบแบ่งตามระดับความรุนแรง
-            </p>
-            {severityChartData.length > 0
-              ? <SeverityChart data={severityChartData} />
-              : <p className="text-center text-base-content/40 py-10">ไม่มีข้อมูล</p>
-            }
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatsCards queryString={qs} trendData={trendData} />
         </div>
 
+        {/* Risk Funnel — executive gold */}
         <div className="card bg-base-100 shadow">
           <div className="card-body">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="card-title text-sm">ความเสี่ยงแยกตามแบบประเมิน</h2>
-              <span className="badge badge-sm badge-ghost">Stacked Bar</span>
-            </div>
-            <p className="text-xs text-base-content/40 mb-3">
-              แต่ละแบบประเมินพบระดับความเสี่ยงมากน้อยแค่ไหน
-            </p>
-            {summaryRows.length > 0
-              ? <AssessmentTypeChart data={summaryRows} />
-              : <p className="text-center text-base-content/40 py-10">ไม่มีข้อมูล</p>
-            }
-            <div className="mt-3 flex items-start gap-2 px-2 py-2 rounded-lg bg-base-200/60 text-xs text-base-content/70">
-              <span className="shrink-0">📖</span>
-              <p>
-                <strong>อ่านกราฟ:</strong> แถบสีแดง/ม่วงในแต่ละแบบคือกลุ่มที่ต้องดูแลพิเศษ
-                — แบบใดมีแถบสีเข้มมากกว่าแสดงว่าพบปัญหาในมิตินั้นสูงกว่า
-              </p>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* ── Row 2: Trend Line | Risk Progress Bars ──────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        <div className="card bg-base-100 shadow">
-          <div className="card-body">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="card-title text-sm">แนวโน้มคะแนนรายเดือน</h2>
-              <span className="badge badge-sm badge-ghost">Line</span>
-            </div>
-            <p className="text-xs text-base-content/40 mb-3">
-              ค่าเฉลี่ยคะแนนแต่ละแบบประเมินย้อนหลัง 6 เดือน
-            </p>
-            {trendData && trendData.length > 0
-              ? <TrendChart data={trendData} />
-              : <p className="text-center text-base-content/40 py-10">
-                  {trendData ? "ยังไม่มีข้อมูลเพียงพอ" : "กำลังโหลด…"}
-                </p>
-            }
-          </div>
-        </div>
-
-        <div className="card bg-base-100 shadow">
-          <div className="card-body">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="card-title text-sm">สัดส่วนระดับความเสี่ยง</h2>
-              <span className="badge badge-sm badge-ghost">Progress</span>
+              <h3 className="font-semibold text-sm">ช่องทางการดูแล (Risk Funnel)</h3>
+              <span className="badge badge-sm badge-ghost">Funnel</span>
             </div>
             <p className="text-xs text-base-content/40 mb-4">
-              แถบแสดงสัดส่วนและจำนวนครั้งของแต่ละระดับ — อ่านง่ายกว่ากราฟวงกลม
+              แสดงจำนวนนักเรียนในแต่ละขั้นของการดูแล — แถบแคบลงแสดงว่าคนออกจากระบบการดูแล
             </p>
+            <RiskFunnelChart totalRegistered={totalRegistered} summaryData={summaryData} />
+          </div>
+        </div>
+
+        <InsightPanel summaryData={summaryData} trendData={trendData} totalRegistered={totalRegistered} />
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION B — ผู้ปฏิบัติงาน
+      ══════════════════════════════════════════════════════════════════ */}
+      <section className="space-y-4 print:hidden">
+        <SectionHeader
+          icon="🚨"
+          label="ศูนย์ปฏิบัติการ"
+          description="รายการที่ต้องดำเนินการ — อัปเดตทุก 30 วินาที"
+          accent="border-error"
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-1">
+            <AlertStatusSummary />
+          </div>
+          <div className="card bg-base-100 shadow lg:col-span-2">
+            <div className="card-body py-4 px-4">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">การแจ้งเตือนล่าสุด</h3>
+                <Link href="/admin/alerts" className="text-xs text-primary hover:underline">ดูทั้งหมด →</Link>
+              </div>
+              <p className="text-xs text-base-content/40 mb-3">คลิกเพื่อดูรายละเอียดและดำเนินการ</p>
+              <RecentAlerts limit={8} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {QUICK_ACTIONS.map(a => (
+            <Link key={a.href} href={a.href} className={`btn btn-sm gap-1.5 ${a.cls}`}>
+              <span>{a.icon}</span>{a.label}
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION C — นักวิเคราะห์ข้อมูล
+      ══════════════════════════════════════════════════════════════════ */}
+      <section className="space-y-4">
+        <SectionHeader
+          icon="📈"
+          label="วิเคราะห์เชิงลึก"
+          description="แนวโน้มและการเปรียบเทียบ — ดาวน์โหลดกราฟแต่ละชิ้นด้วยปุ่ม ↓ PNG"
+          accent="border-info"
+        />
+
+        {/* Row 1: Trend (full width) + MoM Delta */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          <div className="card bg-base-100 shadow lg:col-span-2">
+            <div className="card-body">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <h3 className="font-semibold text-sm">แนวโน้มคะแนนเฉลี่ยรายเดือน</h3>
+                <div className="flex items-center gap-1">
+                  <span className="badge badge-sm badge-ghost">Line · 6 เดือน</span>
+                  <DownloadBtn canvasId="trend-chart" filename="lemcs_trend" />
+                </div>
+              </div>
+              <p className="text-xs text-base-content/40 mb-3">
+                ยิ่งสูงยิ่งมีความเสี่ยง · เส้นขึ้นต่อเนื่องหลายเดือนควรตรวจสอบ
+              </p>
+              {trendData && trendData.length > 0
+                ? <TrendChart data={trendData} canvasId="trend-chart" />
+                : <p className="text-center text-base-content/40 py-10">{trendData ? "ยังไม่มีข้อมูลเพียงพอ" : "กำลังโหลด…"}</p>
+              }
+            </div>
+          </div>
+
+          <div className="card bg-base-100 shadow">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">เปรียบเทียบเดือนนี้ vs เดือนก่อน</h3>
+                <DownloadBtn canvasId="mom-delta-chart" filename="lemcs_mom_delta" />
+              </div>
+              <p className="text-xs text-base-content/40 mb-3">
+                แดง = คะแนนสูงขึ้น (แย่ลง) · เขียว = ลดลง (ดีขึ้น)
+              </p>
+              <MoMDeltaChart
+                trendData={trendData ?? []}
+                canvasId="mom-delta-chart"
+              />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Row 2: Severity doughnut + Assessment type stacked bar */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          <div className="card bg-base-100 shadow">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">การกระจายระดับความเสี่ยง</h3>
+                <div className="flex items-center gap-1">
+                  <span className="badge badge-sm badge-ghost">Doughnut</span>
+                  <DownloadBtn canvasId="severity-chart" filename="lemcs_severity" />
+                </div>
+              </div>
+              <p className="text-xs text-base-content/40 mb-3">
+                เขียว = ปกติ · เหลือง = เฝ้าระวัง · แดง/ม่วง = วิกฤต
+              </p>
+              {severityChartData.length > 0
+                ? <SeverityChart data={severityChartData} canvasId="severity-chart" />
+                : <p className="text-center text-base-content/40 py-10">ไม่มีข้อมูล</p>
+              }
+            </div>
+          </div>
+
+          <div className="card bg-base-100 shadow">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">ความเสี่ยงแยกตามแบบประเมิน</h3>
+                <div className="flex items-center gap-1">
+                  <span className="badge badge-sm badge-ghost">Stacked Bar</span>
+                  <DownloadBtn canvasId="type-chart" filename="lemcs_by_type" />
+                </div>
+              </div>
+              <p className="text-xs text-base-content/40 mb-3">
+                แถบสีเข้ม (แดง/ม่วง) ยาว = แบบนั้นพบปัญหาสูงกว่า
+              </p>
+              {summaryRows.length > 0
+                ? <AssessmentTypeChart data={summaryRows} canvasId="type-chart" />
+                : <p className="text-center text-base-content/40 py-10">ไม่มีข้อมูล</p>
+              }
+            </div>
+          </div>
+
+        </div>
+
+        {/* Row 3: Risk progress bars */}
+        <div className="card bg-base-100 shadow">
+          <div className="card-body">
+            <h3 className="font-semibold text-sm mb-1">สัดส่วนระดับความเสี่ยง (ตัวเลขและแถบ)</h3>
+            <p className="text-xs text-base-content/40 mb-4">จำนวนและเปอร์เซ็นต์แต่ละระดับ</p>
             {severityChartData.length > 0
               ? <RiskProgressBars data={severityChartData} />
               : <p className="text-center text-base-content/40 py-10">ไม่มีข้อมูล</p>
@@ -177,21 +353,17 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-      </div>
+      </section>
 
-      {/* ── Recent Alerts ────────────────────────────────────────────── */}
-      <div className="card bg-base-100 shadow">
-        <div className="card-body">
-          <div className="flex items-center justify-between">
-            <h2 className="card-title">การแจ้งเตือนล่าสุด</h2>
-            <a href="/admin/alerts" className="text-xs text-primary hover:underline">ดูทั้งหมด →</a>
-          </div>
-          <p className="text-xs text-base-content/40 mb-2">
-            5 รายการล่าสุด — อัปเดตอัตโนมัติทุก 30 วินาที
-          </p>
-          <RecentAlerts />
-        </div>
-      </div>
+      {/* ── Print styles ─────────────────────────────────────────────── */}
+      <style>{`
+        @media print {
+          .drawer-side { display: none !important; }
+          .drawer-content { margin-left: 0 !important; }
+          .navbar { display: none !important; }
+          body { background: white !important; }
+        }
+      `}</style>
 
     </div>
   );

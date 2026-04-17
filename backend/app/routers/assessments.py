@@ -44,20 +44,21 @@ async def get_available_assessments(
         if (today.month, today.day) < (current_user.birthdate.month, current_user.birthdate.day):
             age -= 1
 
-    assessments = [
-        {
-            "type": "ST5",
-            "name_th": "แบบประเมินความเครียด (ST-5)",
-            "question_count": 5,
-            "estimated_minutes": 2,
-        },
-    ]
-    # routing rule (validated ranges, may overlap):
+    # routing rule (เงื่อนไขอายุ):
+    #   ST-5  → age ≥ 15
     #   CDI   → age 7–17  (Maria Kovacs 1985)
     #   PHQ-A → age 11–20
-    #   ST-5  → all ages
-    #   overlap 11–17: both CDI and PHQ-A are available
+    #   overlap 15–17: ST-5 + CDI + PHQ-A ทั้ง 3 แบบ
+    #   overlap 11–14: CDI + PHQ-A
+    assessments: list[dict] = []
     if current_user.birthdate is not None:
+        if age >= 15:
+            assessments.append({
+                "type": "ST5",
+                "name_th": "แบบประเมินความเครียด (ST-5)",
+                "question_count": 5,
+                "estimated_minutes": 2,
+            })
         if 7 <= age <= 17:
             assessments.append({
                 "type": "CDI",
@@ -97,6 +98,21 @@ async def submit_assessment(
     db: AsyncSession = Depends(get_db)
 ):
     """ส่งคำตอบ + คำนวณคะแนน + บันทึก + trigger alert"""
+
+    # 0. ตรวจสอบเงื่อนไขอายุก่อนรับคำตอบ
+    if current_user.birthdate:
+        today = date.today()
+        age = today.year - current_user.birthdate.year
+        if (today.month, today.day) < (current_user.birthdate.month, current_user.birthdate.day):
+            age -= 1
+        atype = body.assessment_type.upper()
+        age_ok = (
+            (atype == "ST5"  and age >= 15) or
+            (atype == "CDI"  and 7 <= age <= 17) or
+            (atype == "PHQA" and 11 <= age <= 20)
+        )
+        if not age_ok:
+            raise HTTPException(status_code=400, detail=f"แบบประเมิน {body.assessment_type} ไม่เหมาะสมกับอายุ {age} ปี")
 
     # 1. คำนวณคะแนน
     try:

@@ -31,6 +31,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(sa_text(
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id)"
             ))
+            await conn.execute(sa_text(
+                "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS filled_by_user_id UUID REFERENCES users(id)"
+            ))
     except Exception as e:
         print(f"[Migration] Column migration skipped or already applied: {e}")
         
