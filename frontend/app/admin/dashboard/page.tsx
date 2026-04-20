@@ -15,6 +15,8 @@ import AlertStatusSummary  from "@/components/admin/AlertStatusSummary";
 import RiskFunnelChart     from "@/components/admin/RiskFunnelChart";
 import MoMDeltaChart       from "@/components/admin/MoMDeltaChart";
 import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
+import OrgCompareChart from "@/components/admin/OrgCompareChart";
+import SurveyRoundBanner from "@/components/admin/SurveyRoundBanner";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -100,6 +102,13 @@ export default function AdminDashboardPage() {
   });
   const [exporting, setExporting] = useState<"pdf"|"excel"|null>(null);
 
+  // Auto-select compare group_by based on active filters
+  const compareGroupBy = useMemo(() => {
+    if (filters.district_id) return "school" as const;
+    if (filters.affiliation_id) return "district" as const;
+    return "affiliation" as const;
+  }, [filters.district_id, filters.affiliation_id]);
+
   const qs = useMemo(() => buildQS(filters), [filters]);
 
   const { data: summaryData } = useSWR(
@@ -138,6 +147,11 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-8 pb-12 max-w-screen-xl print:space-y-4">
+
+      {/* ── Survey Round Banner ─────────────────────────────────────────── */}
+      <div className="print:hidden">
+        <SurveyRoundBanner />
+      </div>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
@@ -353,6 +367,43 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION D — เปรียบเทียบระหว่างองค์กร
+      ══════════════════════════════════════════════════════════════════ */}
+      <section className="space-y-4">
+        <SectionHeader
+          icon="🏫"
+          label="เปรียบเทียบสัดส่วนความเสี่ยงระหว่างสังกัด / เขต / โรงเรียน"
+          description="อัตราส่วน % ที่เท่ากัน — มองเห็นความแตกต่างระหว่างองค์กรได้ชัดโดยไม่ถูกจำนวนนักเรียนบิดเบือน"
+          accent="border-warning"
+        />
+
+        <div className="card bg-base-100 shadow">
+          <div className="card-body">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h3 className="font-semibold text-sm">อัตราส่วนระดับความเสี่ยง (100% Stacked)</h3>
+              <div className="flex items-center gap-1">
+                <span className="badge badge-sm badge-ghost">% เปรียบเทียบ</span>
+                <DownloadBtn canvasId="org-compare-chart" filename="lemcs_org_compare" />
+              </div>
+            </div>
+            <p className="text-xs text-base-content/40 mb-4">
+              แต่ละแถบยาวเท่ากัน 100% — เปรียบเทียบสัดส่วนได้โดยตรง · แถบแดง/ม่วงยาวกว่า = องค์กรนั้นมีความเสี่ยงสูงกว่า
+              {filters.district_id
+                ? " · กำลังแสดงโรงเรียนในเขตที่เลือก"
+                : filters.affiliation_id
+                ? " · กำลังแสดงเขตในสังกัดที่เลือก"
+                : " · กำลังแสดงทุกสังกัด"}
+            </p>
+            <OrgCompareChart
+              queryString={qs}
+              defaultGroupBy={compareGroupBy}
+              canvasId="org-compare-chart"
+            />
+          </div>
+        </div>
       </section>
 
       {/* ── Print styles ─────────────────────────────────────────────── */}

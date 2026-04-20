@@ -29,7 +29,7 @@ async def get_report_data(db, current_user, filters: dict) -> list[dict]:
 
     query = """
     SELECT
-        s.first_name, s.last_name, s.grade, s.gender,
+        s.title, s.first_name, s.last_name, s.grade, s.gender,
         sc.name AS school_name,
         a.assessment_type, a.score, a.severity_level,
         a.suicide_risk, a.created_at
@@ -89,7 +89,7 @@ async def generate_excel_report(db, current_user, filters: dict) -> bytes:
     center = Alignment(horizontal="center")
 
     headers = [
-        "ลำดับ", "ชื่อ", "นามสกุล", "โรงเรียน", "ระดับชั้น", "เพศ",
+        "ลำดับ", "คำนำหน้า", "ชื่อ", "นามสกุล", "โรงเรียน", "ระดับชั้น", "เพศ",
         "ประเภทแบบประเมิน", "คะแนน", "ระดับความเสี่ยง",
         "ความเสี่ยงการฆ่าตัวตาย", "วันที่ประเมิน",
     ]
@@ -101,17 +101,18 @@ async def generate_excel_report(db, current_user, filters: dict) -> bytes:
 
     for i, row in enumerate(data, 2):
         ws.cell(row=i, column=1,  value=i - 1)
-        ws.cell(row=i, column=2,  value=row.get("first_name", ""))
-        ws.cell(row=i, column=3,  value=row.get("last_name", ""))
-        ws.cell(row=i, column=4,  value=row.get("school_name") or "ไม่มีข้อมูล")
-        ws.cell(row=i, column=5,  value=row.get("grade", ""))
-        ws.cell(row=i, column=6,  value=row.get("gender", ""))
-        ws.cell(row=i, column=7,  value=row.get("assessment_type", ""))
-        ws.cell(row=i, column=8,  value=row.get("score"))
-        ws.cell(row=i, column=9,  value=SEVERITY_TH.get(row.get("severity_level", ""), row.get("severity_level", "")))
-        ws.cell(row=i, column=10, value="ใช่" if row.get("suicide_risk") else "ไม่มี")
+        ws.cell(row=i, column=2,  value=row.get("title", "") or "")
+        ws.cell(row=i, column=3,  value=row.get("first_name", ""))
+        ws.cell(row=i, column=4,  value=row.get("last_name", ""))
+        ws.cell(row=i, column=5,  value=row.get("school_name") or "ไม่มีข้อมูล")
+        ws.cell(row=i, column=6,  value=row.get("grade", ""))
+        ws.cell(row=i, column=7,  value=row.get("gender", ""))
+        ws.cell(row=i, column=8,  value=row.get("assessment_type", ""))
+        ws.cell(row=i, column=9,  value=row.get("score"))
+        ws.cell(row=i, column=10, value=SEVERITY_TH.get(row.get("severity_level", ""), row.get("severity_level", "")))
+        ws.cell(row=i, column=11, value="ใช่" if row.get("suicide_risk") else "ไม่มี")
         created = row.get("created_at")
-        ws.cell(row=i, column=11, value=created.strftime("%d/%m/%Y %H:%M") if created else "")
+        ws.cell(row=i, column=12, value=created.strftime("%d/%m/%Y %H:%M") if created else "")
 
     for col in ws.columns:
         max_len = max((len(str(cell.value or "")) for cell in col), default=10)
@@ -131,9 +132,11 @@ def _build_pdf_html(data: list[dict]) -> str:
         td_risk = f'<td style="color:#dc2626;font-weight:700">{"ใช่" if risk else "ไม่มี"}</td>'
         created = row.get("created_at")
         date_str = created.strftime("%d/%m/%Y") if created else ""
+        title_val = row.get('title') or ''
+        full_name = f"{title_val} {row.get('first_name','')} {row.get('last_name','')}".strip()
         rows_html += f"""<tr class="{'even' if i % 2 == 0 else ''}">
             <td style="text-align:center">{i}</td>
-            <td>{row.get('first_name','')} {row.get('last_name','')}</td>
+            <td>{full_name}</td>
             <td>{row.get('school_name') or ''}</td>
             <td style="text-align:center">{row.get('grade','')}</td>
             <td style="text-align:center">{row.get('gender','')}</td>

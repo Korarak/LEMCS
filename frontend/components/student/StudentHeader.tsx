@@ -6,6 +6,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface StudentProfile {
   student_code: string;
+  title: string | null;
   first_name: string;
   last_name: string;
   gender: string | null;
@@ -21,12 +22,6 @@ function calcAge(birthdate: string): number {
   let age = today.getFullYear() - y;
   if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) age--;
   return age;
-}
-
-function genderPrefix(gender: string | null): string {
-  if (gender === "ชาย") return "ด.ช.";
-  if (gender === "หญิง") return "ด.ญ.";
-  return "";
 }
 
 function genderIcon(gender: string | null): string {
@@ -59,8 +54,9 @@ export default function StudentHeader() {
     router.push("/login");
   };
 
-  const prefix = genderPrefix(profile?.gender ?? null);
-  const fullName = profile ? `${prefix ? prefix + " " : ""}${profile.first_name} ${profile.last_name}`.trim() : "";
+  const fullName = profile
+    ? [profile.title, profile.first_name, profile.last_name].filter(Boolean).join(" ")
+    : "";
   const gradeDisplay = profile?.classroom || profile?.grade || "";
 
   return (

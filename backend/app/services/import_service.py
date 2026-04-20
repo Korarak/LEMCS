@@ -83,6 +83,24 @@ THAI_MONTHS = {
 MALE_PREFIXES = {"นาย", "เด็กชาย", "ด.ช.", "mr.", "mr"}
 FEMALE_PREFIXES = {"นาง", "นางสาว", "น.ส.", "เด็กหญิง", "ด.ญ.", "mrs.", "ms.", "miss"}
 
+# แปลง alias → คำนำหน้ามาตรฐาน
+_TITLE_MAP: dict[str, str] = {
+    "นาย": "นาย", "mr": "นาย", "mr.": "นาย",
+    "เด็กชาย": "เด็กชาย", "ด.ช.": "เด็กชาย", "ดช.": "เด็กชาย", "ดช": "เด็กชาย",
+    "นาง": "นาง", "mrs": "นาง", "mrs.": "นาง",
+    "นางสาว": "นางสาว", "น.ส.": "นางสาว", "นส.": "นางสาว", "นส": "นางสาว",
+    "miss": "นางสาว", "ms": "นางสาว", "ms.": "นางสาว",
+    "เด็กหญิง": "เด็กหญิง", "ด.ญ.": "เด็กหญิง", "ดญ.": "เด็กหญิง", "ดญ": "เด็กหญิง",
+}
+_MALE_TITLES   = {"นาย", "เด็กชาย"}
+_FEMALE_TITLES = {"นางสาว", "นาง", "เด็กหญิง"}
+
+
+def normalize_title(raw: str) -> str:
+    """แปลง alias คำนำหน้า → ค่ามาตรฐาน (เด็กชาย / เด็กหญิง / นาย / นางสาว / นาง)"""
+    t = str(raw).strip()
+    return _TITLE_MAP.get(t.lower(), _TITLE_MAP.get(t, t))
+
 
 def parse_thai_date(s: str) -> date | None:
     """
@@ -145,6 +163,15 @@ def detect_gender_from_prefix(prefix: str) -> str:
     if p in MALE_PREFIXES:
         return "ชาย"
     if p in FEMALE_PREFIXES:
+        return "หญิง"
+    return "ไม่ระบุ"
+
+
+def detect_gender_from_title(title: str) -> str:
+    """อนุมาน gender จากคำนำหน้ามาตรฐาน"""
+    if title in _MALE_TITLES:
+        return "ชาย"
+    if title in _FEMALE_TITLES:
         return "หญิง"
     return "ไม่ระบุ"
 
@@ -446,14 +473,15 @@ def _apply_mapping(row: list[Any], headers: list[str], col_map: dict[str, int | 
         v = row[idx]
         return str(v).strip() if v is not None else ""
 
-    prefix = get("prefix")
+    prefix_raw = get("prefix")
+    title = normalize_title(prefix_raw) if prefix_raw else ""
     gender_raw = get("gender")
 
-    # Derive gender: ถ้ามี col gender ใช้เลย ไม่ก็ detect จาก prefix
+    # Derive gender: ถ้ามี col gender ใช้เลย ไม่ก็ derive จาก title ที่ normalize แล้ว
     if gender_raw:
         gender = normalize_gender(gender_raw)
-    elif prefix:
-        gender = detect_gender_from_prefix(prefix)
+    elif title:
+        gender = detect_gender_from_title(title)
     else:
         gender = "ไม่ระบุ"
 
@@ -491,9 +519,9 @@ def _apply_mapping(row: list[Any], headers: list[str], col_map: dict[str, int | 
     return {
         "student_code": student_code_val,
         "national_id": national_id_val,
+        "title": title,
         "first_name": get("first_name"),
         "last_name": get("last_name"),
-        "prefix": prefix,
         "gender": gender,
         "birthdate": get("birthdate"),
         "grade": grade,
@@ -623,6 +651,8 @@ async def smart_bulk_import_students(
                     existing.first_name = first_name
                 if last_name:
                     existing.last_name = last_name
+                if mapped.get("title"):
+                    existing.title = mapped["title"]
                 if mapped["gender"]:
                     existing.gender = mapped["gender"]
                 if mapped["grade"]:
@@ -640,6 +670,7 @@ async def smart_bulk_import_students(
             else:
                 stu = Student(
                     student_code=student_code,
+                    title=mapped.get("title") or None,
                     first_name=first_name,
                     last_name=last_name or "",
                     gender=mapped["gender"] or None,

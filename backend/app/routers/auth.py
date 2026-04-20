@@ -23,6 +23,7 @@ async def get_me(student: Student = Depends(get_current_student), db: AsyncSessi
         school_name = school.name if school else None
     return {
         "student_code": student.student_code,
+        "title": student.title,
         "first_name": student.first_name,
         "last_name": student.last_name,
         "gender": student.gender,

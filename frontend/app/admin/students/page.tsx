@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/Toast";
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 interface Student {
-  id: string; student_code: string; first_name: string; last_name: string;
+  id: string; student_code: string; title: string | null;
+  first_name: string; last_name: string;
   gender: string; birthdate: string | null; grade: string; classroom: string;
   school_id: number; school_name: string; is_active: boolean; created_at: string | null;
 }
@@ -50,7 +51,16 @@ function formatThaiDate(dateStr: string | null): string {
   return `${d} ${months[m - 1]} ${y + 543}`;
 }
 
-const INIT_FORM = { student_code: "", first_name: "", last_name: "", gender: "ชาย", grade: "ม.1", classroom: "1", school_id: "" };
+const TITLES_MALE   = ["เด็กชาย", "นาย"];
+const TITLES_FEMALE = ["เด็กหญิง", "นางสาว", "นาง"];
+const ALL_TITLES    = [...TITLES_MALE, ...TITLES_FEMALE];
+
+const TITLE_GENDER: Record<string, string> = {
+  "เด็กชาย": "ชาย", "นาย": "ชาย",
+  "เด็กหญิง": "หญิง", "นางสาว": "หญิง", "นาง": "หญิง",
+};
+
+const INIT_FORM = { student_code: "", title: "นาย", first_name: "", last_name: "", gender: "ชาย", grade: "ม.1", classroom: "1", school_id: "" };
 const PAGE_SIZE = 20;
 
 function useDebounce(value: string, delay: number) {
@@ -202,7 +212,8 @@ export default function StudentsPage() {
   const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setModal("add"); };
   const openEdit = (s: Student) => {
     setEditing(s);
-    setForm({ student_code: s.student_code, first_name: s.first_name, last_name: s.last_name,
+    setForm({ student_code: s.student_code, title: s.title || "นาย",
+      first_name: s.first_name, last_name: s.last_name,
       gender: s.gender || "ชาย", grade: s.grade || "ม.1", classroom: s.classroom || "1",
       school_id: s.school_id?.toString() || "" });
     setModal("edit");
@@ -443,7 +454,10 @@ export default function StudentsPage() {
             ) : students.map(s => (
               <tr key={s.id} className={`hover ${!s.is_active ? "opacity-50" : ""}`}>
                 <td className="font-mono text-xs">{s.student_code}</td>
-                <td className="font-medium">{s.first_name} {s.last_name}</td>
+                <td className="font-medium">
+                  {s.title && <span className="text-base-content/50 mr-1 text-xs">{s.title}</span>}
+                  {s.first_name} {s.last_name}
+                </td>
                 <td>{s.gender ? `${GENDER_ICON[s.gender] || ""} ${s.gender}` : "—"}</td>
                 <td>{s.grade}/{s.classroom}</td>
                 <td className="text-xs">{s.birthdate ? formatThaiDate(s.birthdate) : <span className="text-base-content/30">—</span>}</td>
@@ -498,10 +512,22 @@ export default function StudentsPage() {
                   onChange={e => setForm({...form, student_code: e.target.value})} disabled={modal === "edit"}/>
               </div>
               <div className="form-control">
-                <label className="label"><span className="label-text">เพศ</span></label>
-                <select className="select select-bordered" value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
-                  <option value="ชาย">ชาย</option>
-                  <option value="หญิง">หญิง</option>
+                <label className="label"><span className="label-text">คำนำหน้าชื่อ</span></label>
+                <select
+                  className="select select-bordered"
+                  value={form.title}
+                  onChange={e => {
+                    const t = e.target.value;
+                    setForm({...form, title: t, gender: TITLE_GENDER[t] || form.gender});
+                  }}
+                >
+                  <option value="">— ไม่ระบุ —</option>
+                  <optgroup label="ชาย">
+                    {TITLES_MALE.map(t => <option key={t} value={t}>{t}</option>)}
+                  </optgroup>
+                  <optgroup label="หญิง">
+                    {TITLES_FEMALE.map(t => <option key={t} value={t}>{t}</option>)}
+                  </optgroup>
                 </select>
               </div>
               <div className="form-control">
@@ -511,6 +537,18 @@ export default function StudentsPage() {
               <div className="form-control">
                 <label className="label"><span className="label-text">นามสกุล *</span></label>
                 <input className="input input-bordered" value={form.last_name} onChange={e => setForm({...form, last_name: e.target.value})}/>
+              </div>
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">เพศ</span>
+                  {form.title && TITLE_GENDER[form.title] && (
+                    <span className="label-text-alt text-base-content/40">← อัตโนมัติจากคำนำหน้า</span>
+                  )}
+                </label>
+                <select className="select select-bordered" value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
+                  <option value="ชาย">ชาย</option>
+                  <option value="หญิง">หญิง</option>
+                </select>
               </div>
               <div className="form-control col-span-2">
                 <label className="label"><span className="label-text">โรงเรียน</span></label>

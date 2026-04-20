@@ -4,7 +4,7 @@ from sqlalchemy import select, func, delete, or_
 from pydantic import BaseModel
 from app.database import get_db
 from app.deps import get_current_admin_user, require_role
-from app.models.db_models import School, Student, District, Affiliation, User, AuditLog
+from app.models.db_models import School, Student, District, Affiliation, User, AuditLog, Assessment, Alert, Notification
 from app.services.encryption import encrypt_pii, hash_pii
 
 router = APIRouter()
@@ -334,6 +334,7 @@ async def get_students(
             {
                 "id": str(r.Student.id),
                 "student_code": r.Student.student_code,
+                "title": r.Student.title,
                 "first_name": r.Student.first_name,
                 "last_name": r.Student.last_name,
                 "gender": r.Student.gender,
@@ -354,6 +355,7 @@ async def get_students(
 
 class StudentCreate(BaseModel):
     student_code: str
+    title: str | None = None
     first_name: str
     last_name: str
     gender: str | None = None
@@ -362,6 +364,7 @@ class StudentCreate(BaseModel):
     school_id: int
 
 class StudentUpdate(BaseModel):
+    title: str | None = None
     first_name: str | None = None
     last_name: str | None = None
     gender: str | None = None
@@ -377,6 +380,7 @@ async def create_student(
 ):
     stu = Student(
         student_code=body.student_code,
+        title=body.title,
         first_name=body.first_name,
         last_name=body.last_name,
         gender=body.gender,
@@ -425,10 +429,27 @@ async def truncate_students_by_school(
     if not student_ids:
         return {"school_name": school.name, "deleted_students": 0, "deleted_users": 0}
 
-    # ลบ User records ก่อน (FK constraint)
+    # ดึง assessment ids (ต้องการลบ alerts ที่ FK → assessments ก่อน)
+    asmnt_result = await db.execute(
+        select(Assessment.id).where(Assessment.student_id.in_(student_ids))
+    )
+    assessment_ids = [row[0] for row in asmnt_result.fetchall()]
+
+    # ลำดับ cascade: notifications → alerts → assessments → users → students
+    # notifications ที่อาจอ้าง users ของนักเรียนเหล่านี้
+    user_ids_result = await db.execute(
+        select(User.id).where(User.student_id.in_(student_ids))
+    )
+    user_ids = [row[0] for row in user_ids_result.fetchall()]
+    if user_ids:
+        await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
+
+    if assessment_ids:
+        await db.execute(delete(Alert).where(Alert.assessment_id.in_(assessment_ids)))
+    await db.execute(delete(Alert).where(Alert.student_id.in_(student_ids)))
+    await db.execute(delete(Assessment).where(Assessment.student_id.in_(student_ids)))
     user_del = await db.execute(delete(User).where(User.student_id.in_(student_ids)))
-    # ลบ Student records
-    stu_del = await db.execute(delete(Student).where(Student.school_id == school_id))
+    stu_del  = await db.execute(delete(Student).where(Student.school_id == school_id))
     await db.commit()
 
     return {
@@ -650,8 +671,6 @@ async def get_admin_me(
 # ──────────────────────────────────────────
 # CRUD: Users (systemadmin + superadmin)
 # ──────────────────────────────────────────
-
-from app.models.db_models import User
 
 MANAGE_USERS_ROLES = ("systemadmin", "superadmin")
 
@@ -956,21 +975,43 @@ async def download_template(
 async def proxy_assess_students(
     grade: str | None = Query(None),
     classroom: str | None = Query(None),
-    current_user = Depends(require_role("schooladmin")),
+    school_id: int | None = Query(None),
+    current_user = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     รายชื่อนักเรียนพร้อมสถานะแบบประเมินในภาคเรียนนี้
-    schooladmin เห็นเฉพาะโรงเรียนตัวเอง
+    - schooladmin: เห็นเฉพาะโรงเรียนตัวเอง
+    - commissionadmin/superadmin/systemadmin: ต้องระบุ school_id
     """
     from app.routers.assessments import get_current_academic_year, get_current_term
     from datetime import date as dt
+
+    # ตรวจสอบสิทธิ์และกำหนด effective_school_id
+    if current_user.role == "schooladmin":
+        effective_school_id = current_user.school_id
+    elif school_id:
+        # commissionadmin ตรวจสอบว่าโรงเรียนอยู่ในสังกัด/เขตของตัวเอง
+        if current_user.role == "commissionadmin":
+            sch_check = await db.execute(
+                select(School).join(District, School.district_id == District.id)
+                .where(School.id == school_id)
+            )
+            sch = sch_check.scalar_one_or_none()
+            if not sch:
+                raise HTTPException(404, "ไม่พบโรงเรียน")
+            if current_user.district_id and sch.district_id != current_user.district_id:
+                raise HTTPException(403, "โรงเรียนนี้ไม่อยู่ในเขตของท่าน")
+            # affiliation check ทำ via join แต่ข้ามไปก่อนเพราะตรวจ district ได้เพียงพอ
+        effective_school_id = school_id
+    else:
+        raise HTTPException(400, "กรุณาระบุโรงเรียน (school_id)")
 
     academic_year = get_current_academic_year()
     term = get_current_term()
 
     query = select(Student).where(
-        Student.school_id == current_user.school_id,
+        Student.school_id == effective_school_id,
         Student.is_active == True,
     )
     if grade:
@@ -1050,6 +1091,7 @@ async def proxy_assess_students(
         items.append({
             "id": sid,
             "student_code": s.student_code,
+            "title": s.title,
             "first_name": s.first_name,
             "last_name": s.last_name,
             "gender": s.gender,
@@ -1072,7 +1114,7 @@ class ProxyAssessSubmit(BaseModel):
 @router.post("/proxy-assess/submit")
 async def proxy_assess_submit(
     body: ProxyAssessSubmit,
-    current_user = Depends(require_role("schooladmin")),
+    current_user = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1081,6 +1123,7 @@ async def proxy_assess_submit(
     from app.services.scoring import calculate_score
     from app.services.alert_service import check_and_trigger_alert
     from app.routers.assessments import get_current_academic_year, get_current_term
+    from app.models.db_models import SurveyRound
     from datetime import date as dt
 
     # 1. ดึงนักเรียนและตรวจสอบ scope
@@ -1088,8 +1131,13 @@ async def proxy_assess_submit(
     student = stu_result.scalar_one_or_none()
     if not student:
         raise HTTPException(404, "ไม่พบนักเรียน")
-    if student.school_id != current_user.school_id:
+    if current_user.role == "schooladmin" and student.school_id != current_user.school_id:
         raise HTTPException(403, "นักเรียนไม่ได้อยู่ในโรงเรียนของท่าน")
+    elif current_user.role == "commissionadmin" and current_user.district_id:
+        sch_r = await db.execute(select(School).where(School.id == student.school_id))
+        sch = sch_r.scalar_one_or_none()
+        if not sch or sch.district_id != current_user.district_id:
+            raise HTTPException(403, "นักเรียนไม่ได้อยู่ในเขตของท่าน")
 
     # 2. ตรวจสอบเงื่อนไขอายุ
     if student.birthdate:
@@ -1106,13 +1154,24 @@ async def proxy_assess_submit(
         if not age_ok:
             raise HTTPException(400, f"แบบประเมิน {body.assessment_type} ไม่เหมาะสมกับอายุ {age} ปี")
 
-    # 3. คำนวณคะแนน
+    # 3. ตรวจสอบรอบการสำรวจที่เปิดอยู่
+    round_result = await db.execute(
+        select(SurveyRound)
+        .where(SurveyRound.status == "open")
+        .order_by(SurveyRound.opened_at.desc())
+        .limit(1)
+    )
+    active_round = round_result.scalar_one_or_none()
+    if not active_round:
+        raise HTTPException(403, "ยังไม่เปิดรอบการสำรวจ กรุณาเปิดรอบสำรวจก่อนกรอกแบบประเมินแทนนักเรียน")
+
+    # 4. คำนวณคะแนน
     try:
         result = calculate_score(body.assessment_type, body.responses)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    # 4. บันทึก
+    # 5. บันทึก
     assessment = Assessment(
         student_id=student.id,
         assessment_type=body.assessment_type,
@@ -1122,13 +1181,16 @@ async def proxy_assess_submit(
         suicide_risk=result.get("suicide_risk", False),
         academic_year=get_current_academic_year(),
         term=get_current_term(),
+        survey_round_id=active_round.id,
+        grade_snapshot=student.grade,
+        classroom_snapshot=student.classroom,
         filled_by_user_id=current_user.id,
     )
     db.add(assessment)
     await db.commit()
     await db.refresh(assessment)
 
-    # 5. Audit log
+    # 6. Audit log
     log = AuditLog(
         user_id=current_user.id,
         action="proxy_assessment",
@@ -1142,7 +1204,7 @@ async def proxy_assess_submit(
     )
     db.add(log)
 
-    # 6. Trigger alert (เหมือนนักเรียนกรอกเอง)
+    # 7. Trigger alert (เหมือนนักเรียนกรอกเอง)
     await check_and_trigger_alert(db, assessment, student)
     await db.commit()
 

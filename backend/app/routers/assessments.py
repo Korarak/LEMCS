@@ -6,7 +6,7 @@ from app.deps import get_current_student
 from app.schemas.assessment import (
     AssessmentSubmitRequest, AssessmentResponse, AutosaveRequest
 )
-from app.models.db_models import Assessment, Student
+from app.models.db_models import Assessment, Student, SurveyRound
 from app.services.scoring import calculate_score
 from app.services.recommendation_service import get_recommendations
 from app.services.alert_service import check_and_trigger_alert
@@ -114,13 +114,27 @@ async def submit_assessment(
         if not age_ok:
             raise HTTPException(status_code=400, detail=f"แบบประเมิน {body.assessment_type} ไม่เหมาะสมกับอายุ {age} ปี")
 
-    # 1. คำนวณคะแนน
+    # 1. ตรวจสอบรอบการสำรวจที่เปิดอยู่
+    round_result = await db.execute(
+        select(SurveyRound)
+        .where(SurveyRound.status == "open")
+        .order_by(SurveyRound.opened_at.desc())
+        .limit(1)
+    )
+    active_round = round_result.scalar_one_or_none()
+    if not active_round:
+        raise HTTPException(
+            status_code=403,
+            detail="ยังไม่เปิดรอบการสำรวจ กรุณาติดต่อครูหรือผู้ดูแลระบบ"
+        )
+
+    # 2. คำนวณคะแนน
     try:
         result = calculate_score(body.assessment_type, body.responses)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 2. บันทึกลง database
+    # 3. บันทึกลง database
     assessment = Assessment(
         student_id=current_user.id,
         assessment_type=body.assessment_type,
@@ -130,19 +144,22 @@ async def submit_assessment(
         suicide_risk=result.get("suicide_risk", False),
         academic_year=get_current_academic_year(),
         term=get_current_term(),
+        survey_round_id=active_round.id,
+        grade_snapshot=current_user.grade,
+        classroom_snapshot=current_user.classroom,
     )
     db.add(assessment)
     await db.commit()
     await db.refresh(assessment)
 
-    # 3. ลบ draft
+    # 4. ลบ draft
     await redis_client.delete(f"draft:{current_user.id}:{body.assessment_type}")
 
-    # 4. Trigger alert
+    # 5. Trigger alert
     await check_and_trigger_alert(db, assessment, current_user)
     await db.commit()
 
-    # 5. Return ผล
+    # 6. Return ผล
     return AssessmentResponse(
         id=str(assessment.id),
         assessment_type=body.assessment_type,

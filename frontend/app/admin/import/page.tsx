@@ -138,6 +138,7 @@ export default function SmartImportPage() {
       };
       return {
         student_code: get("student_code"),
+        prefix:       get("prefix"),
         first_name:   get("first_name"),
         last_name:    get("last_name"),
         gender:       get("gender"),
@@ -636,6 +637,7 @@ export default function SmartImportPage() {
                   <thead>
                     <tr>
                       <th>รหัสนักเรียน</th>
+                      <th>คำนำหน้า</th>
                       <th>ชื่อ</th>
                       <th>นามสกุล</th>
                       <th>เพศ</th>
@@ -650,6 +652,7 @@ export default function SmartImportPage() {
                         <td className="font-mono text-xs">
                           {row.student_code || <span className="text-error">ว่าง!</span>}
                         </td>
+                        <td className="text-xs text-base-content/60">{row.prefix || "—"}</td>
                         <td>{row.first_name || "—"}</td>
                         <td>{row.last_name || "—"}</td>
                         <td>
