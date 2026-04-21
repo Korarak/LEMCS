@@ -8,7 +8,6 @@ const withPWA = withPWAInit({
   disable: process.env.NODE_ENV === "development" || process.env.DISABLE_PWA === "true",
   workboxOptions: {
     disableDevLogs: true,
-    navigateFallback: "/",
   },
 });
 

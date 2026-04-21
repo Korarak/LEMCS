@@ -125,6 +125,7 @@ export default function AssessmentPage() {
             questionNumber={currentIndex + 1}
             onAnswer={handleAnswer}
             selectedValue={responses[currentQuestion.key]}
+            subtitle={type === "CDI" ? "เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของท่านมากที่สุดระยะ 2 สัปดาห์ที่ผ่านมา" : undefined}
           />
         </div>
 

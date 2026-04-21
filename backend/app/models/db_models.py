@@ -80,9 +80,10 @@ class SurveyRound(Base):
     label = Column(Text, nullable=False)           # เช่น "ภาคเรียน 1/2568"
     academic_year = Column(Text, nullable=False)   # "2568"
     term = Column(Integer, nullable=False)         # 1 หรือ 2
-    status = Column(Text, nullable=False, default="open")  # "open" | "closed"
+    status = Column(Text, nullable=False, default="open")  # "open" | "closed" | "cancelled"
     opened_at = Column(DateTime(timezone=True), server_default=func.now())
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     creator = relationship("User", foreign_keys=[created_by])

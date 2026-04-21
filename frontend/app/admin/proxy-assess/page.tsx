@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import useSWR from "swr";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
@@ -58,18 +58,25 @@ interface StudentRow {
 
 export default function ProxyAssessPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // ข้อมูล admin ที่ login
   const { data: me } = useSWR("/admin/me", fetcher);
   const isSchoolAdmin = me?.role === "schooladmin";
 
-  // filter สำหรับ non-schooladmin
-  const [affiliationId, setAffiliationId] = useState("");
-  const [districtId,    setDistrictId]    = useState("");
-  const [schoolId,      setSchoolId]      = useState("");
+  // filter — init จาก URL เพื่อให้ย้อนกลับแล้ว filter คงอยู่
+  const [affiliationId, setAffiliationId] = useState(() => searchParams.get("affiliation_id") ?? "");
+  const [districtId,    setDistrictId]    = useState(() => searchParams.get("district_id") ?? "");
+  const [schoolId,      setSchoolId]      = useState(() => searchParams.get("school_id") ?? "");
+  const [grade,         setGrade]         = useState(() => searchParams.get("grade") ?? "");
+  const [classroom,     setClassroom]     = useState(() => searchParams.get("classroom") ?? "");
 
-  const [grade,     setGrade]     = useState("");
-  const [classroom, setClassroom] = useState("");
+  // sync filter → URL (replace ไม่สร้าง history entry ใหม่)
+  const syncUrl = useCallback((patch: Record<string, string>) => {
+    const p = new URLSearchParams(searchParams.toString());
+    Object.entries(patch).forEach(([k, v]) => v ? p.set(k, v) : p.delete(k));
+    router.replace(`/admin/proxy-assess?${p}`);
+  }, [router, searchParams]);
 
   // Cascade dropdowns
   const { data: affiliations } = useSWR(!isSchoolAdmin ? "/admin/affiliations" : null, fetcher);
@@ -115,6 +122,23 @@ export default function ProxyAssessPage() {
     ? undefined
     : schools?.find((s: any) => String(s.id) === String(schoolId))?.name;
 
+  // สร้าง URL ไปหน้ากรอก พร้อม context ชั้นเรียน
+  const buildFormUrl = (studentId: string, type: string) => {
+    const p = new URLSearchParams();
+    if (grade) p.set("grade", grade);
+    if (classroom) p.set("classroom", classroom);
+    if (effectiveSchoolId) p.set("school_id", String(effectiveSchoolId));
+    return `/admin/proxy-assess/${studentId}/${type.toLowerCase()}?${p}`;
+  };
+
+  // คนแรกที่ยังไม่ครบในชั้น
+  const firstIncomplete = students?.find(
+    s => s.available_types.some(t => !s.assessments_done[t])
+  );
+  const firstPendingType = firstIncomplete?.available_types.find(
+    t => !firstIncomplete.assessments_done[t]
+  );
+
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
       {/* Header */}
@@ -135,7 +159,10 @@ export default function ProxyAssessPage() {
                 <select
                   className="select select-bordered select-sm w-full"
                   value={affiliationId}
-                  onChange={e => { setAffiliationId(e.target.value); setDistrictId(""); setSchoolId(""); setGrade(""); }}
+                  onChange={e => {
+                    setAffiliationId(e.target.value); setDistrictId(""); setSchoolId(""); setGrade(""); setClassroom("");
+                    syncUrl({ affiliation_id: e.target.value, district_id: "", school_id: "", grade: "", classroom: "" });
+                  }}
                 >
                   <option value="">ทุกสังกัด</option>
                   {affiliations?.map((a: any) => (
@@ -148,7 +175,10 @@ export default function ProxyAssessPage() {
                 <select
                   className="select select-bordered select-sm w-full"
                   value={districtId}
-                  onChange={e => { setDistrictId(e.target.value); setSchoolId(""); setGrade(""); }}
+                  onChange={e => {
+                    setDistrictId(e.target.value); setSchoolId(""); setGrade(""); setClassroom("");
+                    syncUrl({ district_id: e.target.value, school_id: "", grade: "", classroom: "" });
+                  }}
                 >
                   <option value="">ทุกเขตพื้นที่</option>
                   {districts?.map((d: any) => (
@@ -161,7 +191,10 @@ export default function ProxyAssessPage() {
                 <select
                   className="select select-bordered select-sm w-full"
                   value={schoolId}
-                  onChange={e => { setSchoolId(e.target.value); setGrade(""); }}
+                  onChange={e => {
+                    setSchoolId(e.target.value); setGrade(""); setClassroom("");
+                    syncUrl({ school_id: e.target.value, grade: "", classroom: "" });
+                  }}
                 >
                   <option value="">— เลือกโรงเรียน —</option>
                   {schools?.map((s: any) => (
@@ -179,7 +212,10 @@ export default function ProxyAssessPage() {
               <select
                 className="select select-bordered select-sm"
                 value={grade}
-                onChange={e => { setGrade(e.target.value); setClassroom(""); }}
+                onChange={e => {
+                  setGrade(e.target.value); setClassroom("");
+                  syncUrl({ grade: e.target.value, classroom: "" });
+                }}
                 disabled={!isSchoolAdmin && !schoolId}
               >
                 <option value="">— เลือกชั้น —</option>
@@ -204,7 +240,7 @@ export default function ProxyAssessPage() {
                 className="input input-bordered input-sm w-20"
                 placeholder="เช่น 1"
                 value={classroom}
-                onChange={e => setClassroom(e.target.value)}
+                onChange={e => { setClassroom(e.target.value); syncUrl({ classroom: e.target.value }); }}
                 disabled={!grade}
               />
             </div>
@@ -227,7 +263,25 @@ export default function ProxyAssessPage() {
               <span className="text-sm font-medium">
                 ความคืบหน้า {selectedSchoolName ? `${selectedSchoolName} · ` : ""}ชั้น {grade}{classroom ? `/${classroom}` : ""}
               </span>
-              <span className="text-sm font-bold text-primary">{done}/{total} คน ({pct}%)</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-primary">{done}/{total} คน ({pct}%)</span>
+                {firstIncomplete && firstPendingType && (
+                  <button
+                    className="btn btn-primary btn-sm gap-1.5"
+                    onClick={() => router.push(buildFormUrl(firstIncomplete.id, firstPendingType))}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none"
+                      viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                    </svg>
+                    {done === 0 ? "เริ่มกรอกชั้นเรียน" : "กรอกต่อ"}
+                  </button>
+                )}
+                {done === total && total > 0 && (
+                  <span className="badge badge-success gap-1">✓ ครบทุกคนแล้ว</span>
+                )}
+              </div>
             </div>
             <progress className="progress progress-primary w-full" value={pct} max={100} />
           </div>
@@ -285,11 +339,11 @@ export default function ProxyAssessPage() {
                       {s.available_types.map(t => (
                         <button
                           key={t}
-                          className="btn btn-xs btn-outline"
-                          onClick={() => router.push(`/admin/proxy-assess/${s.id}/${t.toLowerCase()}`)}
-                          title={`กรอก ${TYPE_LABEL[t]}`}
+                          className={`btn btn-xs ${s.assessments_done[t] ? "btn-ghost text-base-content/40" : "btn-outline"}`}
+                          onClick={() => router.push(buildFormUrl(s.id, t))}
+                          title={s.assessments_done[t] ? `กรอกซ้ำ ${TYPE_LABEL[t]}` : `กรอก ${TYPE_LABEL[t]}`}
                         >
-                          {t}
+                          {t}{s.assessments_done[t] ? " ✓" : ""}
                         </button>
                       ))}
                       {s.available_types.length === 0 && (

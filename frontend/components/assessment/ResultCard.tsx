@@ -31,7 +31,7 @@ function getSeverityLabel(assessmentType: string, severityLevel: string): string
 
 const ASSESSMENT_NAMES: Record<string, string> = {
   ST5: "แบบประเมินความเครียด (ST-5)",
-  PHQA: "แบบประเมินภาวะซึมเศร้าเด็วัยรุ่น (PHQ-A)",
+  PHQA: "แบบประเมินภาวะซึมเศร้าเด็กวัยรุ่น (PHQ-A)",
   CDI: "แบบประเมินภาวะซึมเศร้าในเด็ก (CDI)",
 };
 

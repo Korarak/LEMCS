@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
@@ -162,7 +162,7 @@ export default function SchoolsPage() {
       mutate("/admin/schools/stats");
       toast(`ลบ ${deleteTarget.name} สำเร็จ`, "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally {
       setDeleteTarget(null);
     }

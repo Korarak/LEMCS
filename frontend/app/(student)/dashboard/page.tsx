@@ -134,7 +134,7 @@ export default function DashboardPage() {
           }>
             แบบประเมินที่เปิดให้ทำ
           </SectionHeader>
-          <PendingAssessments assessments={assessments} />
+          <PendingAssessments assessments={assessments} roundOpen={!!activeRound} />
         </section>
 
         {/* Divider */}

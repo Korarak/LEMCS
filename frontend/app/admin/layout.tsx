@@ -31,7 +31,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "ระบบ",
     items: [
-      { href: "/admin/users",      label: "ผู้ใช้งาน",          icon: "👤", roles: ["systemadmin", "superadmin"] },
+      { href: "/admin/survey-rounds", label: "รอบการสำรวจ",        icon: "📅", roles: ["systemadmin", "superadmin"] },
+      { href: "/admin/users",        label: "ผู้ใช้งาน",          icon: "👤", roles: ["systemadmin", "superadmin"] },
       { href: "/admin/import",     label: "นำเข้าข้อมูล",        icon: "📥", roles: ["systemadmin", "schooladmin"] },
       { href: "/admin/audit-logs", label: "Audit Log",            icon: "🔍", roles: ["systemadmin", "superadmin"] },
       { href: "/admin/committee",  label: "คณะกรรมการดำเนินงาน", icon: "📜" },

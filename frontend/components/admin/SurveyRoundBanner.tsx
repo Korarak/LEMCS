@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
 
@@ -280,6 +281,9 @@ export default function SurveyRoundBanner() {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href="/admin/survey-rounds" className="btn btn-ghost btn-xs text-base-content/50">
+            จัดการรอบ →
+          </Link>
           {current ? (
             <button
               className="btn btn-error btn-sm gap-1.5"

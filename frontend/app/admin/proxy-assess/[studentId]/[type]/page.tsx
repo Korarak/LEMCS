@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { ASSESSMENT_QUESTIONS } from "@/lib/questions";
@@ -33,6 +33,7 @@ interface StudentInfo {
   classroom: string;
   age: number | null;
   available_types: string[];
+  assessments_done: Record<string, { severity_level: string; score: number; filled_by_proxy: boolean }>;
 }
 
 interface AssessmentResult {
@@ -46,16 +47,62 @@ interface AssessmentResult {
 function ProxyFormInner() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const studentId = params?.studentId as string;
   const typeRaw   = (params?.type as string)?.toUpperCase().replace(/-/g, "") ?? "";
 
+  // context จากหน้า list
+  const ctxGrade     = searchParams.get("grade") ?? "";
+  const ctxClassroom = searchParams.get("classroom") ?? "";
+  const ctxSchoolId  = searchParams.get("school_id") ?? "";
+
   const questions = ASSESSMENT_QUESTIONS[typeRaw as keyof typeof ASSESSMENT_QUESTIONS];
 
+  // ดึงรายชื่อในชั้น (ถ้ามี context) เพื่อคำนวณ auto-advance
+  const classParams = new URLSearchParams();
+  if (ctxGrade)     classParams.set("grade", ctxGrade);
+  if (ctxClassroom) classParams.set("classroom", ctxClassroom);
+  if (ctxSchoolId)  classParams.set("school_id", ctxSchoolId);
+  const hasClassCtx = !!(ctxGrade && (ctxSchoolId || true));
+
   const { data: studentList } = useSWR<StudentInfo[]>(
-    `/admin/proxy-assess/students`,
+    hasClassCtx
+      ? `/admin/proxy-assess/students?${classParams}`
+      : `/admin/proxy-assess/students`,
     fetcher
   );
   const student = studentList?.find(s => s.id === studentId);
+
+  // สร้าง URL พร้อม context
+  const buildFormUrl = (sid: string, type: string) => {
+    const p = new URLSearchParams();
+    if (ctxGrade)     p.set("grade", ctxGrade);
+    if (ctxClassroom) p.set("classroom", ctxClassroom);
+    if (ctxSchoolId)  p.set("school_id", ctxSchoolId);
+    return `/admin/proxy-assess/${sid}/${type.toLowerCase()}?${p}`;
+  };
+
+  // หาคนถัดไปในชั้นที่ยังไม่ครบ (หลัง submit)
+  const findNext = (doneResult: AssessmentResult) => {
+    if (!studentList) return null;
+    const currentIdx = studentList.findIndex(s => s.id === studentId);
+    // ตรวจว่า type อื่นของคนนี้ยังค้างอยู่ไหม (นับ result ที่เพิ่งได้ด้วย)
+    const doneSelf = { ...(student?.assessments_done ?? {}), [doneResult.assessment_type]: true };
+    const selfPending = student?.available_types.find(t => !doneSelf[t]);
+    if (selfPending) return { studentId, type: selfPending };
+    // ไปคนถัดไป
+    for (let i = currentIdx + 1; i < studentList.length; i++) {
+      const s = studentList[i];
+      const pending = s.available_types.find(t => !s.assessments_done[t]);
+      if (pending) return { studentId: s.id, type: pending };
+    }
+    return null;
+  };
+
+  // สถิติชั้นเรียน
+  const classDone  = studentList?.filter(s => s.available_types.every(t => s.assessments_done[t])).length ?? 0;
+  const classTotal = studentList?.length ?? 0;
+  const currentPos = studentList ? studentList.findIndex(s => s.id === studentId) + 1 : 0;
 
   const [step,        setStep]        = useState<"confirm"|"form"|"result">("confirm");
   const [currentIdx,  setCurrentIdx]  = useState(0);
@@ -63,6 +110,7 @@ function ProxyFormInner() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
   const [result,      setResult]      = useState<AssessmentResult | null>(null);
+  const [nextTarget,  setNextTarget]  = useState<{ studentId: string; type: string } | null>(null);
   const [error,       setError]       = useState<string | null>(null);
 
   // guard — redirect if wrong type for this student
@@ -93,6 +141,7 @@ function ProxyFormInner() {
         responses,
       });
       setResult(res.data);
+      setNextTarget(findNext(res.data));
       setStep("result");
     } catch (e: any) {
       setError(e?.response?.data?.detail ?? "เกิดข้อผิดพลาด");
@@ -110,14 +159,20 @@ function ProxyFormInner() {
   return (
     <div className="max-w-2xl mx-auto space-y-4">
       {/* Proxy banner — แสดงตลอด */}
-      <div className="alert alert-info py-2 text-sm">
+      <div className="alert alert-info py-2 text-sm flex-wrap gap-y-1">
         <span>✏️</span>
-        <span>
+        <span className="flex-1">
           กำลังกรอกแทน{" "}
           <strong>{student ? `${student.first_name} ${student.last_name}` : "..."}</strong>
-          {student && ` — ชั้น ${student.grade}/${student.classroom}`}
+          {student && ` — ชั้น ${student.grade}${student.classroom ? `/${student.classroom}` : ""}`}
           {" | "}{TYPE_LABEL[typeRaw] ?? typeRaw}
         </span>
+        {classTotal > 0 && (
+          <span className="text-xs opacity-70 ml-auto">
+            {currentPos > 0 ? `คนที่ ${currentPos}/${classTotal}` : ""}{" "}
+            · กรอกครบ {classDone}/{classTotal} คน
+          </span>
+        )}
       </div>
 
       {/* ── Step 1: PDPA Confirm ── */}
@@ -187,6 +242,11 @@ function ProxyFormInner() {
           {/* Current question */}
           <div className={`card bg-base-100 shadow transition-opacity duration-300 ${isAnimating ? "opacity-0" : "opacity-100"}`}>
             <div className="card-body gap-5">
+              {typeRaw === "CDI" && (
+                <p className="text-xs text-base-content/50 -mb-3">
+                  เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของนักเรียนมากที่สุดระยะ 2 สัปดาห์ที่ผ่านมา
+                </p>
+              )}
               <p className="text-base font-medium leading-relaxed">{q.text}</p>
               <div className="space-y-2">
                 {q.options.map((opt: any) => (
@@ -282,22 +342,36 @@ function ProxyFormInner() {
 
             <p className="text-xs text-base-content/40">บันทึกแล้ว — กรอกโดยครู (proxy)</p>
 
-            <div className="card-actions justify-center gap-2">
-              <button className="btn btn-ghost" onClick={() => router.push("/admin/proxy-assess")}>
+            {classTotal > 0 && (
+              <div className="text-sm text-base-content/50">
+                กรอกครบ <strong className="text-primary">{classDone + 1}/{classTotal}</strong> คนในชั้น
+              </div>
+            )}
+
+            <div className="card-actions justify-center gap-2 flex-wrap">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (ctxGrade)     p.set("grade", ctxGrade);
+                  if (ctxClassroom) p.set("classroom", ctxClassroom);
+                  if (ctxSchoolId)  p.set("school_id", ctxSchoolId);
+                  router.push(`/admin/proxy-assess${p.toString() ? `?${p}` : ""}`);
+                }}
+              >
                 ← กลับรายชื่อ
               </button>
-              {student?.available_types
-                .filter(t => t !== typeRaw)
-                .map(t => (
-                  <button
-                    key={t}
-                    className="btn btn-outline btn-sm"
-                    onClick={() => router.push(`/admin/proxy-assess/${studentId}/${t.toLowerCase()}`)}
-                  >
-                    กรอก {TYPE_LABEL[t]} ต่อ →
-                  </button>
-                ))
-              }
+
+              {nextTarget ? (
+                <button
+                  className="btn btn-primary btn-sm gap-1.5"
+                  onClick={() => router.push(buildFormUrl(nextTarget.studentId, nextTarget.type))}
+                >
+                  คนถัดไป ({TYPE_LABEL[nextTarget.type]}) →
+                </button>
+              ) : classTotal > 0 ? (
+                <span className="badge badge-success gap-1 self-center">✓ กรอกครบทุกคนในชั้นแล้ว</span>
+              ) : null}
             </div>
           </div>
         </div>

@@ -639,11 +639,32 @@ async def delete_school(
     school = result.scalar_one_or_none()
     if not school:
         raise HTTPException(404, "ไม่พบโรงเรียน")
-    student_count = (await db.execute(
-        select(func.count()).select_from(Student).where(Student.school_id == school_id)
-    )).scalar() or 0
-    if student_count > 0:
-        raise HTTPException(400, f"ไม่สามารถลบได้ — ยังมีนักเรียน {student_count} คนในโรงเรียนนี้")
+    # ตรวจสอบ FK blockers ในรอบเดียว
+    counts = (await db.execute(
+        select(
+            select(func.count()).select_from(Student).where(Student.school_id == school_id).scalar_subquery().label("student_count"),
+            select(func.count()).select_from(User).where(User.school_id == school_id).scalar_subquery().label("admin_count"),
+        )
+    )).one()
+    if counts.student_count > 0:
+        raise HTTPException(400, {
+            "reason": "has_students",
+            "message": f"ไม่สามารถลบโรงเรียนได้ เนื่องจากยังมีนักเรียน {counts.student_count} คนอยู่ในโรงเรียนนี้",
+            "hint": "กรุณาใช้ปุ่ม 'ล้างข้อมูลนักเรียน' เพื่อลบข้อมูลนักเรียนทั้งหมดออกก่อน แล้วจึงลบโรงเรียน",
+            "count": counts.student_count,
+        })
+    if counts.admin_count > 0:
+        admin_users = (await db.execute(
+            select(User.username, User.role).where(User.school_id == school_id)
+        )).all()
+        usernames = ", ".join(f"{u.username} ({u.role})" for u in admin_users)
+        raise HTTPException(400, {
+            "reason": "has_admin_users",
+            "message": f"ไม่สามารถลบโรงเรียนได้ เนื่องจากมีบัญชีผู้ดูแล {counts.admin_count} บัญชีที่ผูกกับโรงเรียนนี้",
+            "hint": "กรุณาไปที่ 'จัดการผู้ใช้งาน' แล้วลบหรือย้ายบัญชีต่อไปนี้ออกก่อน",
+            "affected_users": usernames,
+            "count": counts.admin_count,
+        })
     await db.delete(school)
     await db.commit()
     return {"deleted": True}
