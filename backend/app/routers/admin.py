@@ -261,6 +261,29 @@ async def get_schools_stats(
         for s in schools
     ]
 
+@router.get("/classrooms")
+async def get_classrooms(
+    school_id: int | None = Query(None),
+    grade: str | None = Query(None),
+    current_user = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ดึงรายการห้องเรียนที่มีจริงในฐานข้อมูล (distinct) สำหรับ dropdown"""
+    q = select(Student.classroom).distinct().where(Student.classroom.isnot(None))
+
+    if current_user.role == "schooladmin":
+        q = q.where(Student.school_id == current_user.school_id)
+    elif school_id:
+        q = q.where(Student.school_id == school_id)
+
+    if grade:
+        q = q.where(Student.grade == grade)
+
+    q = q.order_by(Student.classroom)
+    result = await db.execute(q)
+    return [r[0] for r in result.fetchall()]
+
+
 @router.get("/students")
 async def get_students(
     school_id: int | None = Query(None),
