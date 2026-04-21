@@ -31,6 +31,7 @@ const SEVERITY_BADGE: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 const EMPTY_FILTERS: DashboardFilters = {
+  survey_round_id: "",
   affiliation_id: "", district_id: "", school_id: "",
   assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
 };
@@ -47,14 +48,15 @@ export default function ReportsPage() {
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    if (filters.affiliation_id) p.set("affiliation_id", filters.affiliation_id);
-    if (filters.district_id)    p.set("district_id",    filters.district_id);
-    if (filters.school_id)      p.set("school_id",      filters.school_id);
-    if (filters.assessment_type)p.set("assessment_type", filters.assessment_type);
-    if (filters.grade)          p.set("grade",          filters.grade);
-    if (filters.gender)         p.set("gender",         filters.gender);
-    if (filters.date_from)      p.set("date_from",      filters.date_from);
-    if (filters.date_to)        p.set("date_to",        filters.date_to);
+    if (filters.survey_round_id) p.set("survey_round_id", filters.survey_round_id);
+    if (filters.affiliation_id)  p.set("affiliation_id",  filters.affiliation_id);
+    if (filters.district_id)     p.set("district_id",     filters.district_id);
+    if (filters.school_id)       p.set("school_id",       filters.school_id);
+    if (filters.assessment_type) p.set("assessment_type", filters.assessment_type);
+    if (filters.grade)           p.set("grade",           filters.grade);
+    if (filters.gender)          p.set("gender",          filters.gender);
+    if (!filters.survey_round_id && filters.date_from) p.set("date_from", filters.date_from);
+    if (!filters.survey_round_id && filters.date_to)   p.set("date_to",   filters.date_to);
     p.set("limit",  String(PAGE_SIZE));
     p.set("offset", String(page * PAGE_SIZE));
     return p.toString();
@@ -62,18 +64,23 @@ export default function ReportsPage() {
 
   const { data: reports, isLoading } = useSWR(`/reports/data?${qs}`, fetcher);
 
+  function buildExportBody() {
+    const body: any = {};
+    if (filters.survey_round_id) body.survey_round_id = filters.survey_round_id;
+    if (filters.affiliation_id)  body.affiliation_id  = Number(filters.affiliation_id);
+    if (filters.district_id)     body.district_id     = Number(filters.district_id);
+    if (filters.school_id)       body.school_id       = Number(filters.school_id);
+    if (filters.assessment_type) body.assessment_type = filters.assessment_type;
+    if (filters.grade)           body.grade           = filters.grade;
+    if (filters.gender)          body.gender          = filters.gender;
+    if (!filters.survey_round_id && filters.date_from) body.date_from = filters.date_from;
+    if (!filters.survey_round_id && filters.date_to)   body.date_to   = filters.date_to;
+    return body;
+  }
+
   const handleExportPDF = async () => {
     try {
-      const body: any = {};
-      if (filters.affiliation_id) body.affiliation_id = Number(filters.affiliation_id);
-      if (filters.district_id)    body.district_id    = Number(filters.district_id);
-      if (filters.school_id)      body.school_id      = Number(filters.school_id);
-      if (filters.assessment_type)body.assessment_type = filters.assessment_type;
-      if (filters.grade)          body.grade           = filters.grade;
-      if (filters.gender)         body.gender          = filters.gender;
-      if (filters.date_from)      body.date_from       = filters.date_from;
-      if (filters.date_to)        body.date_to         = filters.date_to;
-      const res = await api.post("/reports/export/pdf", body, { responseType: "blob" });
+      const res = await api.post("/reports/export/pdf", buildExportBody(), { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;
@@ -88,16 +95,7 @@ export default function ReportsPage() {
 
   const handleExportExcel = async () => {
     try {
-      const body: any = {};
-      if (filters.affiliation_id) body.affiliation_id = Number(filters.affiliation_id);
-      if (filters.district_id)    body.district_id    = Number(filters.district_id);
-      if (filters.school_id)      body.school_id      = Number(filters.school_id);
-      if (filters.assessment_type)body.assessment_type = filters.assessment_type;
-      if (filters.grade)          body.grade           = filters.grade;
-      if (filters.gender)         body.gender          = filters.gender;
-      if (filters.date_from)      body.date_from       = filters.date_from;
-      if (filters.date_to)        body.date_to         = filters.date_to;
-      const res = await api.post("/reports/export/excel", body, { responseType: "blob" });
+      const res = await api.post("/reports/export/excel", buildExportBody(), { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;

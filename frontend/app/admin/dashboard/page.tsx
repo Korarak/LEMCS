@@ -17,19 +17,22 @@ import MoMDeltaChart       from "@/components/admin/MoMDeltaChart";
 import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
 import OrgCompareChart from "@/components/admin/OrgCompareChart";
 import SurveyRoundBanner from "@/components/admin/SurveyRoundBanner";
+import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 function buildQS(f: DashboardFilters): string {
   const p = new URLSearchParams();
+  if (f.survey_round_id) p.set("survey_round_id", f.survey_round_id);
   if (f.affiliation_id)  p.set("affiliation_id",  f.affiliation_id);
   if (f.district_id)     p.set("district_id",     f.district_id);
   if (f.school_id)       p.set("school_id",       f.school_id);
   if (f.assessment_type) p.set("assessment_type", f.assessment_type);
   if (f.grade)           p.set("grade",           f.grade);
   if (f.gender)          p.set("gender",          f.gender);
-  if (f.date_from)       p.set("date_from",       f.date_from);
-  if (f.date_to)         p.set("date_to",         f.date_to);
+  // date filters are ignored when survey_round_id is set
+  if (!f.survey_round_id && f.date_from) p.set("date_from", f.date_from);
+  if (!f.survey_round_id && f.date_to)   p.set("date_to",   f.date_to);
   return p.toString();
 }
 
@@ -97,10 +100,13 @@ const QUICK_ACTIONS = [
 
 export default function AdminDashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>({
+    survey_round_id: "",
     affiliation_id: "", district_id: "", school_id: "",
     assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
   });
   const [exporting, setExporting] = useState<"pdf"|"excel"|null>(null);
+
+  const { data: rounds } = useSWR<SurveyRound[]>("/survey-rounds", fetcher);
 
   // Auto-select compare group_by based on active filters
   const compareGroupBy = useMemo(() => {
@@ -110,6 +116,27 @@ export default function AdminDashboardPage() {
   }, [filters.district_id, filters.affiliation_id]);
 
   const qs = useMemo(() => buildQS(filters), [filters]);
+
+  const selectedRound = useMemo(
+    () => rounds?.find(r => r.id === filters.survey_round_id) ?? null,
+    [rounds, filters.survey_round_id],
+  );
+
+  const subtitleText = useMemo(() => {
+    if (selectedRound) {
+      return `${selectedRound.label} · ปีการศึกษา ${selectedRound.academic_year} ภาคเรียนที่ ${selectedRound.term}`;
+    }
+    if (filters.date_from || filters.date_to) {
+      const from = filters.date_from
+        ? new Date(filters.date_from).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+        : "–";
+      const to = filters.date_to
+        ? new Date(filters.date_to).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+        : "–";
+      return `ช่วงวันที่ ${from} ถึง ${to}`;
+    }
+    return "ข้อมูลทั้งหมด จ.เลย";
+  }, [selectedRound, filters.date_from, filters.date_to]);
 
   const { data: summaryData } = useSWR(
     `/reports/summary${qs ? `?${qs}` : ""}`, fetcher, { refreshInterval: 60000 },
@@ -157,7 +184,7 @@ export default function AdminDashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">ภาพรวมผลการประเมิน</h1>
-          <p className="text-base-content/50 text-sm">ข้อมูล จ.เลย ปีการศึกษา 2567 ภาคเรียนที่ 2</p>
+          <p className="text-base-content/50 text-sm">{subtitleText}</p>
         </div>
 
         {/* Export toolbar */}

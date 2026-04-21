@@ -3,10 +3,12 @@
 import { useState, useCallback, type ReactNode } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 export interface DashboardFilters {
+  survey_round_id: string;
   affiliation_id: string;
   district_id: string;
   school_id: string;
@@ -23,12 +25,16 @@ interface FilterBarProps {
 }
 
 const EMPTY: DashboardFilters = {
+  survey_round_id: "",
   affiliation_id: "", district_id: "", school_id: "",
   assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
 };
 
 export default function FilterBar({ onFilterChange, children }: FilterBarProps) {
   const [filters, setFilters] = useState<DashboardFilters>(EMPTY);
+
+  const { data: rounds } = useSWR<SurveyRound[]>("/survey-rounds", fetcher);
+  const activeRounds = rounds?.filter(r => r.status !== "cancelled") ?? [];
 
   const { data: affiliations } = useSWR("/admin/affiliations", fetcher);
 
@@ -60,6 +66,28 @@ export default function FilterBar({ onFilterChange, children }: FilterBarProps) 
   return (
     <div className="card bg-base-100 shadow">
       <div className="card-body py-3 space-y-2">
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-base-content/50 whitespace-nowrap">รอบสำรวจ</span>
+          <select
+            className="select select-bordered select-sm flex-1"
+            value={filters.survey_round_id}
+            onChange={e => update({ survey_round_id: e.target.value, date_from: "", date_to: "" })}
+          >
+            <option value="">ทุกรอบ (ไม่กรอง)</option>
+            {activeRounds.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+                {r.status === "open" ? " 🟢" : " ⬜"}
+              </option>
+            ))}
+          </select>
+          {filters.survey_round_id && (
+            <span className="text-xs text-base-content/40 whitespace-nowrap">
+              (วันที่จะถูกละเว้น)
+            </span>
+          )}
+        </div>
 
         {/* แถว 1: ลำดับชั้น สังกัด → เขต → โรงเรียน */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -140,11 +168,11 @@ export default function FilterBar({ onFilterChange, children }: FilterBarProps) 
             <option value="หญิง">หญิง</option>
           </select>
 
-          {/* วันที่เริ่ม */}
           <input
             type="date"
-            className="input input-bordered input-sm w-full"
+            className="input input-bordered input-sm w-full disabled:opacity-40"
             value={filters.date_from}
+            disabled={!!filters.survey_round_id}
             onChange={e => update({ date_from: e.target.value })}
           />
 
@@ -152,8 +180,9 @@ export default function FilterBar({ onFilterChange, children }: FilterBarProps) 
           <div className="flex gap-1">
             <input
               type="date"
-              className="input input-bordered input-sm flex-1 min-w-0"
+              className="input input-bordered input-sm flex-1 min-w-0 disabled:opacity-40"
               value={filters.date_to}
+              disabled={!!filters.survey_round_id}
               onChange={e => update({ date_to: e.target.value })}
             />
             {hasFilter && (

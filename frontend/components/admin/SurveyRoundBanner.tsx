@@ -4,18 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import useSWR, { mutate } from "swr";
 import { api } from "@/lib/api";
+import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
-
-interface SurveyRound {
-  id: string;
-  label: string;
-  academic_year: string;
-  term: number;
-  status: "open" | "closed";
-  opened_at: string;
-  closed_at: string | null;
-}
 
 // ─── Modal: เปิดรอบ ──────────────────────────────────────────────────────────
 function OpenRoundModal({

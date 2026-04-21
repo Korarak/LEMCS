@@ -4,19 +4,9 @@ import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
-
-interface SurveyRound {
-  id: string;
-  label: string;
-  academic_year: string;
-  term: number;
-  status: "open" | "closed" | "cancelled";
-  opened_at: string;
-  closed_at: string | null;
-  cancelled_at: string | null;
-}
 
 interface RoundStats {
   total: number;
