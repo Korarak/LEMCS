@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { api } from "@/lib/api";
@@ -382,8 +382,10 @@ function ProxyFormInner() {
 
 export default function ProxyFormPage() {
   return (
-    <RoleGuard roles={["schooladmin"]}>
-      <ProxyFormInner />
-    </RoleGuard>
+    <Suspense fallback={<div className="p-8 text-center"><span className="loading loading-spinner loading-md text-primary" /></div>}>
+      <RoleGuard roles={["schooladmin"]}>
+        <ProxyFormInner />
+      </RoleGuard>
+    </Suspense>
   );
 }

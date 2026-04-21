@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Suspense } from "react";
 import useSWR from "swr";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -56,7 +56,7 @@ interface StudentRow {
   assessments_done: Record<string, AssessmentDone>;
 }
 
-export default function ProxyAssessPage() {
+function ProxyAssessInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -358,5 +358,13 @@ export default function ProxyAssessPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ProxyAssessPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center"><span className="loading loading-spinner loading-md text-primary" /></div>}>
+      <ProxyAssessInner />
+    </Suspense>
   );
 }
