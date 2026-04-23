@@ -15,5 +15,6 @@ cryptography==42.0.5
 minio==7.2.5
 weasyprint==68.1
 openpyxl==3.1.2
+xlrd==2.0.1
 celery==5.3.6
 prometheus-fastapi-instrumentator==6.1.0

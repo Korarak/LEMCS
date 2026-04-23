@@ -15,7 +15,7 @@ interface Student {
   school_id: number; school_name: string; is_active: boolean; created_at: string | null;
 }
 interface StudentsResponse { total: number; items: Student[]; }
-interface School { id: number; name: string; district_id: number; school_type: string | null; }
+interface School { id: number; name: string; district_id: number | null; affiliation_id: number | null; school_type: string | null; }
 interface District { id: number; name: string; affiliation_id: number; }
 interface Affiliation { id: number; name: string; }
 
@@ -101,7 +101,10 @@ export default function StudentsPage() {
   const visibleSchools = filterDistrict
     ? (allSchools ?? []).filter(s => String(s.district_id) === filterDistrict)
     : filterAffil
-      ? (allSchools ?? []).filter(s => visibleDistricts.some(d => d.id === s.district_id))
+      ? (allSchools ?? []).filter(s =>
+          visibleDistricts.some(d => d.id === s.district_id) ||
+          String(s.affiliation_id) === filterAffil
+        )
       : (allSchools ?? []);
 
   const selectedSchool = allSchools?.find(s => String(s.id) === filterSchool);

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
 from app.database import get_db
-from app.schemas.auth import LoginRequest, OTPRequest, OTPVerifyRequest, TokenResponse
+from app.schemas.auth import LoginRequest, OTPRequest, SKRLoginRequest, OTPVerifyRequest, TokenResponse
 from app.services.auth_service import (
     request_otp, verify_otp, create_tokens, refresh_access_token
 )
@@ -69,6 +69,27 @@ async def login_bypass(body: OTPRequest, db: AsyncSession = Depends(get_db)):
     await db.commit()
     tokens = await create_tokens(user)
     return tokens
+
+@router.post("/login/skr", response_model=TokenResponse)
+async def login_skr(body: SKRLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Login สำหรับนักศึกษา สกร.: ยืนยันตัวตนด้วย student_code + วันเกิด (ไม่ต้องใช้เลขบัตรปชช.)"""
+    from app.services.auth_service import get_student_by_code, get_user_by_student_id, create_tokens
+
+    student = await get_student_by_code(db, body.student_code)
+    if not student:
+        raise HTTPException(status_code=404, detail="ไม่พบรหัสนักศึกษาในระบบ")
+
+    if student.birthdate != body.birthdate:
+        raise HTTPException(status_code=401, detail="ข้อมูลวันเกิดไม่ถูกต้อง")
+
+    user = await get_user_by_student_id(db, student.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลผู้ใช้งานของนักศึกษานี้")
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+    return await create_tokens(user)
+
 
 @router.post("/otp/verify", response_model=TokenResponse)
 async def verify_login_otp(body: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):

@@ -168,7 +168,7 @@ async def get_schools(
     db: AsyncSession = Depends(get_db)
 ):
     """ดึงข้อมูลโรงเรียน (กรองตาม role + เขตพื้นที่)"""
-    query = select(School).join(District, School.district_id == District.id)
+    query = select(School).outerjoin(District, School.district_id == District.id)
 
     if current_user.role == "schooladmin":
         query = query.where(School.id == current_user.school_id)
@@ -176,13 +176,19 @@ async def get_schools(
         if current_user.district_id:
             query = query.where(School.district_id == current_user.district_id)
         elif current_user.affiliation_id:
-            query = query.where(District.affiliation_id == current_user.affiliation_id)
+            query = query.where(
+                or_(District.affiliation_id == current_user.affiliation_id,
+                    School.affiliation_id == current_user.affiliation_id)
+            )
     else:
         # superadmin / systemadmin → filter by params
         if district_id:
             query = query.where(School.district_id == district_id)
         if affiliation_id:
-            query = query.where(District.affiliation_id == affiliation_id)
+            query = query.where(
+                or_(District.affiliation_id == affiliation_id,
+                    School.affiliation_id == affiliation_id)
+            )
 
     result = await db.execute(query.order_by(School.name))
     schools = result.scalars().all()
@@ -192,6 +198,7 @@ async def get_schools(
             "id": s.id,
             "name": s.name,
             "district_id": s.district_id,
+            "affiliation_id": s.affiliation_id,
             "school_type": s.school_type
         } for s in schools
     ]
@@ -303,7 +310,7 @@ async def get_students(
     base = (
         select(Student, School.name.label("school_name"))
         .join(School, Student.school_id == School.id)
-        .join(District, School.district_id == District.id)
+        .outerjoin(District, School.district_id == District.id)
     )
 
     # RBAC scope
@@ -313,7 +320,10 @@ async def get_students(
         if current_user.district_id:
             base = base.where(School.district_id == current_user.district_id)
         elif current_user.affiliation_id:
-            base = base.where(District.affiliation_id == current_user.affiliation_id)
+            base = base.where(
+                or_(District.affiliation_id == current_user.affiliation_id,
+                    School.affiliation_id == current_user.affiliation_id)
+            )
     else:
         # superadmin / systemadmin → filter by params
         if school_id:
@@ -321,7 +331,10 @@ async def get_students(
         elif district_id:
             base = base.where(School.district_id == district_id)
         elif affiliation_id:
-            base = base.where(District.affiliation_id == affiliation_id)
+            base = base.where(
+                or_(District.affiliation_id == affiliation_id,
+                    School.affiliation_id == affiliation_id)
+            )
 
     if grade:
         base = base.where(Student.grade == grade)
@@ -610,12 +623,14 @@ async def get_audit_logs(
 
 class SchoolCreate(BaseModel):
     name: str
-    district_id: int
+    district_id: int | None = None
+    affiliation_id: int | None = None
     school_type: str | None = None
 
 class SchoolUpdate(BaseModel):
     name: str | None = None
     district_id: int | None = None
+    affiliation_id: int | None = None
     school_type: str | None = None
 
 @router.post("/schools")
@@ -625,7 +640,12 @@ async def create_school(
     db: AsyncSession = Depends(get_db),
 ):
     name = normalize_school_name(body.name.strip(), body.school_type)
-    school = School(name=name, district_id=body.district_id, school_type=body.school_type)
+    school = School(
+        name=name,
+        district_id=body.district_id,
+        affiliation_id=body.affiliation_id,
+        school_type=body.school_type,
+    )
     db.add(school)
     await db.commit()
     await db.refresh(school)
@@ -1009,6 +1029,57 @@ async def download_template(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename=template_{data_type}.csv"},
     )
+
+
+# ──────────────────────────────────────────
+# SKR Import (สกร. เลย — multi-sheet XLS)
+# ──────────────────────────────────────────
+
+from app.services.skr_import_service import preview_skr_file, bulk_import_skr_sheets
+import json as _json_skr
+
+
+@router.post("/import/skr-preview")
+async def skr_import_preview(
+    file: UploadFile = File(...),
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+):
+    """
+    Preview ไฟล์ สกร.: อ่าน .XLS → คืน list ของ sheets พร้อม student count + preview 5 แถว
+    """
+    filename = file.filename or ""
+    if not (filename.lower().endswith(".xls") or filename.lower().endswith(".xlsx")):
+        raise HTTPException(400, "รองรับเฉพาะไฟล์ .xls และ .xlsx เท่านั้น")
+    content = await file.read()
+    return preview_skr_file(content)
+
+
+@router.post("/import/skr-confirm")
+async def skr_import_confirm(
+    file: UploadFile = File(...),
+    selected_sheets: str = Form(..., description="JSON array ของชื่อ sheet ที่เลือก"),
+    affiliation_id: Optional[int] = Form(None),
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Import นักศึกษา สกร. จาก sheets ที่เลือก
+    - selected_sheets: JSON string เช่น '["อ.เมือง","อ.ด่านซ้าย"]'
+    - auto-create สกร.อำเภอX schools ถ้ายังไม่มีในระบบ
+    """
+    filename = file.filename or ""
+    if not (filename.lower().endswith(".xls") or filename.lower().endswith(".xlsx")):
+        raise HTTPException(400, "รองรับเฉพาะไฟล์ .xls และ .xlsx เท่านั้น")
+
+    try:
+        sheets = _json_skr.loads(selected_sheets)
+        if not isinstance(sheets, list) or not sheets:
+            raise ValueError
+    except Exception:
+        raise HTTPException(400, "selected_sheets ต้องเป็น JSON array ของชื่อ sheet")
+
+    content = await file.read()
+    return await bulk_import_skr_sheets(db, content, sheets, affiliation_id)
 
 
 # ──────────────────────────────────────────

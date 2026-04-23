@@ -25,7 +25,8 @@ class School(Base):
     __tablename__ = "schools"
     id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False)
-    district_id = Column(Integer, ForeignKey("districts.id"))
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    affiliation_id = Column(Integer, ForeignKey("affiliations.id"), nullable=True)
     school_type = Column(Text)
 
 class Student(Base):

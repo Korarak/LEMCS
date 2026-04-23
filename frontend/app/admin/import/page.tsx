@@ -35,7 +35,8 @@ interface ImportResult {
 interface School {
   id: number;
   name: string;
-  district_id: number;
+  district_id: number | null;
+  affiliation_id: number | null;
   school_type: string | null;
 }
 
@@ -175,7 +176,10 @@ export default function SmartImportPage() {
       list = list.filter(s => s.district_id === selectedDistId);
     } else if (selectedAffId) {
       const validDistIds = new Set(districts.filter(d => d.affiliation_id === selectedAffId).map(d => d.id));
-      list = list.filter(s => validDistIds.has(s.district_id));
+      list = list.filter(s =>
+        validDistIds.has(s.district_id as number) ||
+        s.affiliation_id === selectedAffId
+      );
     }
     if (schoolSearch.trim()) {
       const q = schoolSearch.trim().toLowerCase();

@@ -44,6 +44,25 @@ async def lifespan(app: FastAPI):
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS grade_snapshot TEXT",
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS classroom_snapshot TEXT",
         "ALTER TABLE survey_rounds ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS affiliation_id INTEGER REFERENCES affiliations(id)",
+        # backfill: โรงเรียน สกร. ที่สร้างก่อนมี affiliation_id → ตั้งค่าจาก affiliations
+        """UPDATE schools SET affiliation_id = (
+            SELECT id FROM affiliations WHERE name ILIKE '%สกร%' LIMIT 1
+        ) WHERE school_type = 'สกร.' AND affiliation_id IS NULL
+          AND EXISTS (SELECT 1 FROM affiliations WHERE name ILIKE '%สกร%')""",
+        # backfill: เชื่อม district_id ให้โรงเรียน สกร. ที่ยังไม่มี
+        # จับคู่ด้วย: ชื่ออำเภอในชื่อโรงเรียน (หลัง "อำเภอ") ↔ ชื่อ district (ILIKE)
+        """UPDATE schools s
+           SET district_id = (
+               SELECT d.id FROM districts d
+               WHERE d.affiliation_id = s.affiliation_id
+                 AND d.name ILIKE '%' || SUBSTRING(s.name FROM 'อำเภอ(.+)') || '%'
+               LIMIT 1
+           )
+           WHERE s.school_type = 'สกร.'
+             AND s.district_id IS NULL
+             AND s.affiliation_id IS NOT NULL
+             AND SUBSTRING(s.name FROM 'อำเภอ(.+)') IS NOT NULL""",
     ]
     for _sql in _migrations:
         try:
