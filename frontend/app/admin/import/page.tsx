@@ -308,6 +308,7 @@ export default function SmartImportPage() {
         id: res.data.id,
         name: normalizedName,
         district_id: createSchoolDistId as number,
+        affiliation_id: res.data.affiliation_id ?? null,
         school_type: createSchoolType || null,
       };
       setSchools(prev => [...prev, newSchool]);
