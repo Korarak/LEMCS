@@ -7,12 +7,16 @@ interface QuestionCardProps {
   questionNumber: number;
   onAnswer: (key: string, value: number | string | boolean) => void;
   selectedValue?: number | string | boolean;
+  subtitle?: string;
 }
 
-export default function QuestionCard({ question, questionNumber, onAnswer, selectedValue }: QuestionCardProps) {
+export default function QuestionCard({ question, questionNumber, onAnswer, selectedValue, subtitle }: QuestionCardProps) {
   return (
     <div className="card bg-base-100 shadow-xl w-full max-w-lg mx-auto">
       <div className="card-body gap-6 p-6 sm:p-8">
+        {subtitle && (
+          <p className="text-sm text-base-content/60 -mb-2">{subtitle}</p>
+        )}
         <h2 className="text-2xl font-semibold text-base-content leading-relaxed">
           {question.text}
         </h2>

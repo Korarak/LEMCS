@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 
 interface PendingAssessmentsProps {
   assessments: any[];
+  roundOpen: boolean;
 }
 
 const ASSESSMENT_META: Record<string, { icon: string; gradient: string }> = {
@@ -12,7 +13,7 @@ const ASSESSMENT_META: Record<string, { icon: string; gradient: string }> = {
   CDI:  { icon: "🌱", gradient: "linear-gradient(135deg, #10b981, #059669)" },
 };
 
-export default function PendingAssessments({ assessments }: PendingAssessmentsProps) {
+export default function PendingAssessments({ assessments, roundOpen }: PendingAssessmentsProps) {
   const router = useRouter();
 
   if (assessments.length === 0) {
@@ -75,24 +76,32 @@ export default function PendingAssessments({ assessments }: PendingAssessmentsPr
 
             {/* Button */}
             <button
+              disabled={!roundOpen}
               onClick={() => router.push(`/assess/${a.type.toLowerCase()}`)}
+              title={!roundOpen ? "ยังไม่เปิดรอบการสำรวจ" : undefined}
               style={{
                 flexShrink: 0,
                 padding: "9px 18px", border: "none", borderRadius: 10,
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-                color: "white", fontWeight: 700, fontSize: "0.82rem",
-                cursor: "pointer", fontFamily: "inherit",
-                boxShadow: "0 4px 14px rgba(79,70,229,.32)",
+                background: roundOpen
+                  ? "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)"
+                  : "#e2e8f0",
+                color: roundOpen ? "white" : "#94a3b8",
+                fontWeight: 700, fontSize: "0.82rem",
+                cursor: roundOpen ? "pointer" : "not-allowed",
+                fontFamily: "inherit",
+                boxShadow: roundOpen ? "0 4px 14px rgba(79,70,229,.32)" : "none",
                 transition: "opacity .15s, transform .15s",
                 display: "flex", alignItems: "center", gap: 6,
               }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+              onMouseEnter={e => { if (roundOpen) { e.currentTarget.style.opacity = "0.9"; e.currentTarget.style.transform = "translateY(-1px)"; } }}
               onMouseLeave={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.transform = "translateY(0)"; }}
             >
-              เริ่มเลย
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" stroke="currentColor" d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
+              {roundOpen ? "เริ่มเลย" : "ยังไม่เปิด"}
+              {roundOpen && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" stroke="currentColor" d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              )}
             </button>
           </div>
         );

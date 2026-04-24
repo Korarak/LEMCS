@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [assessments, setAssessments] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeRound, setActiveRound] = useState<{ label: string; academic_year: string; term: number } | null | undefined>(undefined);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("lemcs_token");
@@ -50,14 +51,17 @@ export default function DashboardPage() {
   const fetchDashboardData = async (authToken: string) => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800";
-      const [resAvail, resHistory] = await Promise.all([
+      const [resAvail, resHistory, resRound] = await Promise.all([
         fetch(`${baseUrl}/api/assessments/available`, { headers: { "Authorization": `Bearer ${authToken}` } }),
-        fetch(`${baseUrl}/api/assessments/history`, { headers: { "Authorization": `Bearer ${authToken}` } })
+        fetch(`${baseUrl}/api/assessments/history`, { headers: { "Authorization": `Bearer ${authToken}` } }),
+        fetch(`${baseUrl}/api/survey-rounds/current`),
       ]);
       if (resAvail.ok) setAssessments(await resAvail.json());
       if (resHistory.ok) setHistory(await resHistory.json());
+      setActiveRound(resRound.ok ? await resRound.json() : null);
     } catch (e) {
       console.error(e);
+      setActiveRound(null);
     } finally {
       setLoading(false);
     }
@@ -78,6 +82,49 @@ export default function DashboardPage() {
     <div className="fade-in-up" style={{ padding: "24px 16px 80px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
+        {/* Survey Round Status */}
+        {activeRound === null && (
+          <div style={{
+            background: "rgba(251,191,36,.12)",
+            border: "1px solid rgba(251,191,36,.4)",
+            borderRadius: 12,
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}>
+            <span style={{ fontSize: "1.2rem" }}>⏸</span>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: "0.9rem", color: "#92400e", margin: 0 }}>
+                ยังไม่เปิดรอบการสำรวจ
+              </p>
+              <p style={{ fontSize: "0.78rem", color: "#78716c", margin: 0 }}>
+                กรุณารอการแจ้งเตือนจากครูหรือโรงเรียน เมื่อเปิดรอบแล้วสามารถกลับมาทำแบบประเมินได้
+              </p>
+            </div>
+          </div>
+        )}
+        {activeRound && (
+          <div style={{
+            background: "rgba(34,197,94,.08)",
+            border: "1px solid rgba(34,197,94,.3)",
+            borderRadius: 12,
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: "#22c55e", flexShrink: 0,
+              boxShadow: "0 0 0 3px rgba(34,197,94,.2)",
+            }} />
+            <p style={{ fontSize: "0.82rem", color: "#166534", margin: 0 }}>
+              รอบสำรวจที่เปิดอยู่: <strong>{activeRound.label}</strong>
+            </p>
+          </div>
+        )}
+
         {/* Section: แบบประเมินที่เปิดให้ทำ */}
         <section>
           <SectionHeader icon={
@@ -87,7 +134,7 @@ export default function DashboardPage() {
           }>
             แบบประเมินที่เปิดให้ทำ
           </SectionHeader>
-          <PendingAssessments assessments={assessments} />
+          <PendingAssessments assessments={assessments} roundOpen={!!activeRound} />
         </section>
 
         {/* Divider */}

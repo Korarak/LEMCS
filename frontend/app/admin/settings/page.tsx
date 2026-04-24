@@ -1,6 +1,8 @@
 "use client";
 
-export default function SettingsPage() {
+import RoleGuard from "@/components/admin/RoleGuard";
+
+function SettingsPageInner() {
   const testUsers = [
     { username: "admin",       role: "systemadmin",     scope: "ดู+จัดการทุกอย่าง" },
     { username: "superadmin",  role: "superadmin",      scope: "ศธจ.เลย — ดูทุกสังกัด" },
@@ -81,5 +83,13 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <RoleGuard roles={["systemadmin"]}>
+      <SettingsPageInner />
+    </RoleGuard>
   );
 }

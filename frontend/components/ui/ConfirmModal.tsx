@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 interface ConfirmModalProps {
   open: boolean;
   title: string;
@@ -23,11 +25,32 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
-    <dialog className="modal modal-open" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="modal-box max-w-sm">
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {/* Backdrop */}
+      <div
+        onClick={onCancel}
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundColor: "rgba(0,0,0,0.45)",
+        }}
+      />
+      {/* Modal box */}
+      <div className="modal-box max-w-sm" style={{ position: "relative", zIndex: 1 }}>
         <h3 className="font-bold text-lg">{title}</h3>
         <p className="py-3 text-base-content/75 text-sm leading-relaxed">{message}</p>
         {detail && (
@@ -46,6 +69,7 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </dialog>
+    </div>,
+    document.body
   );
 }

@@ -1,11 +1,51 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+
+interface StudentProfile {
+  student_code: string;
+  title: string | null;
+  first_name: string;
+  last_name: string;
+  gender: string | null;
+  grade: string | null;
+  classroom: string | null;
+  school_name: string | null;
+  birthdate: string | null;
+}
+
+function calcAge(birthdate: string): number {
+  const [y, m, d] = birthdate.split("-").map(Number);
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) age--;
+  return age;
+}
+
+function genderIcon(gender: string | null): string {
+  if (gender === "ชาย") return "🙎‍♂️";
+  if (gender === "หญิง") return "🙎‍♀️";
+  return "🙎";
+}
 
 export default function StudentHeader() {
   const router = useRouter();
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [profile, setProfile] = useState<StudentProfile | null>(null);
 
-  const handleLogout = () => {
+  useEffect(() => {
+    const token = localStorage.getItem("lemcs_token");
+    if (!token) return;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800";
+    fetch(`${baseUrl}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setProfile(data); })
+      .catch(() => {});
+  }, []);
+
+  const doLogout = () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("lemcs_token");
       localStorage.removeItem("access_token");
@@ -13,6 +53,11 @@ export default function StudentHeader() {
     }
     router.push("/login");
   };
+
+  const fullName = profile
+    ? [profile.title, profile.first_name, profile.last_name].filter(Boolean).join(" ")
+    : "";
+  const gradeDisplay = profile?.classroom || profile?.grade || "";
 
   return (
     <header style={{
@@ -51,30 +96,39 @@ export default function StudentHeader() {
         </div>
 
         {/* Student info pill (desktop) */}
-        <div className="hidden md:flex" style={{
-          alignItems: "center", gap: 8,
-          padding: "5px 14px", borderRadius: 20,
-          background: "rgba(99,102,241,0.06)",
-          border: "1px solid rgba(99,102,241,0.14)",
-          fontSize: "0.82rem", color: "#374151",
-        }}>
-          <span style={{ fontSize: "0.9rem" }}>🙎‍♂️</span>
-          <span style={{ fontWeight: 600, color: "#1e1b4b" }}>ด.ช. ใจดี เรียนเก่ง</span>
-          <Dot />
-          <span style={{ color: "#6b7280" }}>ม.3/1</span>
-          <Dot />
-          <span style={{ color: "#6b7280" }}>โรงเรียนเลยพิทยาคม</span>
-        </div>
+        {profile && (
+          <div className="hidden md:flex" style={{
+            alignItems: "center", gap: 8,
+            padding: "5px 14px", borderRadius: 20,
+            background: "rgba(99,102,241,0.06)",
+            border: "1px solid rgba(99,102,241,0.14)",
+            fontSize: "0.82rem", color: "#374151",
+          }}>
+            <span style={{ fontSize: "0.9rem" }}>{genderIcon(profile.gender)}</span>
+            <span style={{ fontWeight: 600, color: "#1e1b4b" }}>{fullName}</span>
+            {profile.birthdate && (
+              <><Dot /><span style={{ color: "#6366f1", fontWeight: 500 }}>{calcAge(profile.birthdate)} ปี</span></>
+            )}
+            {gradeDisplay && <><Dot /><span style={{ color: "#6b7280" }}>{gradeDisplay}</span></>}
+            {profile.school_name && <><Dot /><span style={{ color: "#6b7280" }}>{profile.school_name}</span></>}
+          </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {/* Mobile student info */}
-          <div className="md:hidden" style={{ textAlign: "right", marginRight: 6, lineHeight: 1.3 }}>
-            <div style={{ color: "#1e1b4b", fontWeight: 600, fontSize: "0.82rem" }}>ด.ช. ใจดี เรียนเก่ง</div>
-            <div style={{ color: "#818cf8", fontSize: "0.7rem" }}>ม.3/1</div>
-          </div>
+          {profile && (
+            <div className="md:hidden" style={{ textAlign: "right", marginRight: 6, lineHeight: 1.3 }}>
+              <div style={{ color: "#1e1b4b", fontWeight: 600, fontSize: "0.82rem" }}>{fullName}</div>
+              <div style={{ color: "#818cf8", fontSize: "0.7rem" }}>
+                {profile.birthdate && `${calcAge(profile.birthdate)} ปี`}
+                {profile.birthdate && gradeDisplay && " · "}
+                {gradeDisplay}
+              </div>
+            </div>
+          )}
 
           <button
-            onClick={handleLogout}
+            onClick={() => setConfirmLogout(true)}
             style={{
               background: "transparent",
               border: "1px solid rgba(99,102,241,0.3)",
@@ -100,6 +154,16 @@ export default function StudentHeader() {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmLogout}
+        title="ออกจากระบบ"
+        message="ต้องการออกจากระบบใช่หรือไม่?"
+        confirmLabel="ออกจากระบบ"
+        confirmClass="btn-error"
+        onConfirm={doLogout}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </header>
   );
 }

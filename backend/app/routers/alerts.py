@@ -13,6 +13,13 @@ async def list_alerts(
     status: str | None = Query(None),
     alert_level: str | None = Query(None),
     school_id: int | None = Query(None),
+    district_id: int | None = Query(None),
+    affiliation_id: int | None = Query(None),
+    assessment_type: str | None = Query(None),
+    grade: str | None = Query(None),
+    gender: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
     current_user = Depends(get_current_admin_user),
@@ -24,6 +31,7 @@ async def list_alerts(
             Alert,
             Student.grade,
             Student.classroom,
+            Student.gender,
             School.name.label("school_name"),
             Assessment.assessment_type,
             Assessment.score,
@@ -35,7 +43,7 @@ async def list_alerts(
         .join(Assessment, Alert.assessment_id == Assessment.id)
     )
 
-    # Role-based scope
+    # Role-based scope (ล็อกตาม role ก่อน ไม่ให้ override ด้วย query param)
     if current_user.role == "schooladmin":
         query = query.where(Student.school_id == current_user.school_id)
     elif current_user.role == "commissionadmin":
@@ -43,13 +51,29 @@ async def list_alerts(
             query = query.where(School.district_id == current_user.district_id)
         elif current_user.affiliation_id:
             query = query.where(District.affiliation_id == current_user.affiliation_id)
+    else:
+        # superadmin / systemadmin — ใช้ filter จาก query param ได้
+        if school_id:
+            query = query.where(Student.school_id == school_id)
+        elif district_id:
+            query = query.where(School.district_id == district_id)
+        elif affiliation_id:
+            query = query.where(District.affiliation_id == affiliation_id)
 
     if status:
         query = query.where(Alert.status == status)
     if alert_level:
         query = query.where(Alert.alert_level == alert_level)
-    if school_id:
-        query = query.where(Student.school_id == school_id)
+    if assessment_type:
+        query = query.where(Assessment.assessment_type == assessment_type)
+    if grade:
+        query = query.where(Student.grade == grade)
+    if gender:
+        query = query.where(Student.gender == gender)
+    if date_from:
+        query = query.where(Alert.created_at >= date_from)
+    if date_to:
+        query = query.where(Alert.created_at <= date_to + " 23:59:59")
 
     query = query.order_by(Alert.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
@@ -125,13 +149,24 @@ async def get_alert(
     db: AsyncSession = Depends(get_db)
 ):
     """รายละเอียด alert + ข้อมูลนักเรียน (anonymized บางส่วน)"""
-    result = await db.execute(
+    query = (
         select(Alert, Student, School.name.label("school_name"), Assessment)
         .join(Student, Alert.student_id == Student.id)
         .join(School, Student.school_id == School.id)
+        .join(District, School.district_id == District.id)
         .join(Assessment, Alert.assessment_id == Assessment.id)
         .where(Alert.id == alert_id)
     )
+    # Scope lock — ป้องกัน cross-school/district access
+    if current_user.role == "schooladmin":
+        query = query.where(Student.school_id == current_user.school_id)
+    elif current_user.role == "commissionadmin":
+        if current_user.district_id:
+            query = query.where(School.district_id == current_user.district_id)
+        elif current_user.affiliation_id:
+            query = query.where(District.affiliation_id == current_user.affiliation_id)
+
+    result = await db.execute(query)
     row = result.first()
     if not row:
         raise HTTPException(404, "ไม่พบ alert")
@@ -176,7 +211,23 @@ async def update_alert(
     db: AsyncSession = Depends(get_db)
 ):
     """อัปเดตสถานะ case + บันทึก note + assign ผู้รับผิดชอบ"""
-    result = await db.execute(select(Alert).where(Alert.id == alert_id))
+    # Scope-aware fetch — ป้องกัน cross-school update
+    query = (
+        select(Alert)
+        .join(Student, Alert.student_id == Student.id)
+        .join(School, Student.school_id == School.id)
+        .join(District, School.district_id == District.id)
+        .where(Alert.id == alert_id)
+    )
+    if current_user.role == "schooladmin":
+        query = query.where(Student.school_id == current_user.school_id)
+    elif current_user.role == "commissionadmin":
+        if current_user.district_id:
+            query = query.where(School.district_id == current_user.district_id)
+        elif current_user.affiliation_id:
+            query = query.where(District.affiliation_id == current_user.affiliation_id)
+
+    result = await db.execute(query)
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(404, "ไม่พบ alert")

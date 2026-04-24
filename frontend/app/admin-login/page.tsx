@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import CommitteeContent from "@/components/committee/CommitteeContent";
 
 // ── Design tokens (shared with student login) ─────────────────────
 const C = {
@@ -111,7 +112,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex" }}>
+    <div style={{ display: "flex", alignItems: "flex-start" }}>
 
       {/* ════════════════════════════════════════════════════════
           LEFT  ·  Brand panel  (lg+ only)
@@ -121,7 +122,8 @@ export default function AdminLoginPage() {
         style={{
           width: 420, flexShrink: 0,
           background: "linear-gradient(155deg, #1e3a5f 0%, #1e40af 40%, #1d4ed8 100%)",
-          padding: "48px 44px", position: "relative", overflow: "hidden",
+          padding: "48px 44px", position: "sticky", top: 0,
+          height: "100vh", overflow: "hidden",
         }}
       >
         {/* Decorative circles */}
@@ -169,7 +171,7 @@ export default function AdminLoginPage() {
           </h2>
           <p style={{ color: "rgba(186,230,253,0.88)", fontSize: "0.9rem", lineHeight: 1.75 }}>
             สำหรับครู เจ้าหน้าที่ และผู้ดูแลระบบ<br/>
-            จังหวัดเลย — ครอบคลุม 100,000+ นักเรียน
+            สำหรับผู้ดูแลระบบ ครู และเจ้าหน้าที่ จังหวัดเลย
           </p>
         </div>
 
@@ -195,34 +197,15 @@ export default function AdminLoginPage() {
           ))}
         </div>
 
-        {/* Stats */}
-        <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-          gap: 8, paddingTop: 20,
-          borderTop: "1px solid rgba(255,255,255,0.15)",
-        }}>
-          {[
-            { n: "100K+", label: "นักเรียน" },
-            { n: "3",     label: "แบบประเมิน" },
-            { n: "จ.เลย", label: "จังหวัด" },
-          ].map(s => (
-            <div key={s.label}>
-              <div style={{ color: "white", fontWeight: 800, fontSize: "1.2rem" }}>{s.n}</div>
-              <div style={{ color: "rgba(186,230,253,0.65)", fontSize: "0.7rem", marginTop: 1 }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
       </aside>
 
       {/* ════════════════════════════════════════════════════════
-          RIGHT  ·  Form panel
+          RIGHT  ·  Form + Committee
       ════════════════════════════════════════════════════════ */}
-      <main
-        style={{
-          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#f8fafc", padding: "32px 20px", overflowY: "auto",
-        }}
-      >
+      <div style={{ flex: 1, background: "#f8fafc", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+
+        {/* Form section */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "32px 20px" }}>
         <div className="w-full fade-in-up" style={{ maxWidth: 380 }}>
 
           {/* Mobile-only header */}
@@ -456,7 +439,29 @@ export default function AdminLoginPage() {
           </div>
 
         </div>
-      </main>
+        </div>{/* /form section */}
+
+        {/* ════ Committee section ════ */}
+        <div style={{
+          borderTop: "1px solid #e2e8f0",
+          background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+          padding: "48px 24px 64px",
+        }}>
+          <div style={{ maxWidth: 860, margin: "0 auto" }}>
+            <div style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0f172a", margin: 0 }}>
+                คณะกรรมการดำเนินงาน
+              </h2>
+              <p style={{ fontSize: "0.8rem", color: "#64748b", marginTop: 6 }}>
+                ประกาศสำนักงานศึกษาธิการจังหวัดเลย — แต่งตั้งคณะทำงานป้องกันและแก้ไขปัญหาสุขภาพจิตนักเรียน
+                นักศึกษาในสถานศึกษาจังหวัดเลย (มีนาคม ๒๕๖๙)
+              </p>
+            </div>
+            <CommitteeContent />
+          </div>
+        </div>
+
+      </div>{/* /right column */}
     </div>
   );
 }

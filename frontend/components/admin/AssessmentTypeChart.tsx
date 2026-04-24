@@ -30,7 +30,7 @@ const TYPE_LABEL: Record<string, string> = {
   CDI:  "CDI\nซึมเศร้าเด็ก",
 };
 
-export default function AssessmentTypeChart({ data }: { data: SummaryRow[] }) {
+export default function AssessmentTypeChart({ data, canvasId = "type-chart" }: { data: SummaryRow[]; canvasId?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef  = useRef<Chart | null>(null);
 
@@ -110,7 +110,7 @@ export default function AssessmentTypeChart({ data }: { data: SummaryRow[] }) {
 
   return (
     <div className="relative" style={{ height: 200 }}>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} id={canvasId} />
     </div>
   );
 }

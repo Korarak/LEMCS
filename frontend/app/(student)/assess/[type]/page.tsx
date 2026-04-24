@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import QuestionCard from "@/components/assessment/QuestionCard";
 import ProgressBar from "@/components/assessment/ProgressBar";
 import { ASSESSMENT_QUESTIONS } from "@/lib/questions";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function AssessmentPage() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function AssessmentPage() {
   const [responses, setResponses] = useState<Record<string, number | string | boolean>>({});
   const [isAnimating, setIsAnimating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ตรวจสอบว่ามีคีย์คำถามนี้ในระบบหรือไม่
   useEffect(() => {
@@ -66,16 +69,18 @@ export default function AssessmentPage() {
   }, [questions]);
 
   const handleSubmit = async () => {
+    setConfirmSubmit(false);
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const token = localStorage.getItem("lemcs_token");
       const url = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6800"}/api/assessments/submit`;
-      
+
       const res = await fetch(url, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` 
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
           assessment_type: type,
@@ -93,12 +98,12 @@ export default function AssessmentPage() {
         }
         throw new Error(`[${res.status}] ${errMsg}`);
       }
-      
+
       const result = await res.json();
       router.push(`/result/${result.id}`);
     } catch (error: any) {
       console.error(error);
-      alert(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}`);
+      setSubmitError(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -120,6 +125,7 @@ export default function AssessmentPage() {
             questionNumber={currentIndex + 1}
             onAnswer={handleAnswer}
             selectedValue={responses[currentQuestion.key]}
+            subtitle={type === "CDI" ? "เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของท่านมากที่สุดระยะ 2 สัปดาห์ที่ผ่านมา" : undefined}
           />
         </div>
 
@@ -137,7 +143,7 @@ export default function AssessmentPage() {
           </button>
           
           {currentIndex < questions.length - 1 ? (
-             <button 
+             <button
                className="btn btn-ghost"
                onClick={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))}
                disabled={responses[currentQuestion.key] === undefined || isAnimating}
@@ -147,14 +153,34 @@ export default function AssessmentPage() {
           ) : (
              <button
                className="btn btn-primary px-8 shadow-sm"
-               onClick={handleSubmit}
+               onClick={() => setConfirmSubmit(true)}
                disabled={isSubmitting || !allAnswered}
              >
                {isSubmitting ? <span className="loading loading-spinner" /> : "ส่งคำตอบและประเมินผล"}
              </button>
           )}
         </div>
+
+        {submitError && (
+          <div className="alert alert-error max-w-lg mx-auto mt-4 text-sm">
+            <span>✕</span>
+            <span>{submitError}</span>
+            <button className="btn btn-ghost btn-xs ml-auto" onClick={() => setSubmitError(null)}>✕</button>
+          </div>
+        )}
       </div>
+
+      <ConfirmModal
+        open={confirmSubmit}
+        title="ยืนยันการส่งแบบประเมิน"
+        message="ต้องการส่งคำตอบและประเมินผลใช่หรือไม่?"
+        detail="หลังจากส่งแล้วจะไม่สามารถแก้ไขคำตอบได้"
+        confirmLabel="ส่งแบบประเมิน"
+        confirmClass="btn-primary"
+        loading={isSubmitting}
+        onConfirm={handleSubmit}
+        onCancel={() => setConfirmSubmit(false)}
+      />
     </div>
   );
 }

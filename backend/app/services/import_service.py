@@ -12,7 +12,7 @@ from typing import Any
 from datetime import date, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.db_models import Student, School, District
+from app.models.db_models import Student, School, District, User
 from app.services.encryption import encrypt_pii, hash_pii
 
 
@@ -81,7 +81,25 @@ THAI_MONTHS = {
 }
 
 MALE_PREFIXES = {"นาย", "เด็กชาย", "ด.ช.", "mr.", "mr"}
-FEMALE_PREFIXES = {"นาง", "นางสาว", "เด็กหญิง", "ด.ญ.", "mrs.", "ms.", "miss"}
+FEMALE_PREFIXES = {"นาง", "นางสาว", "น.ส.", "เด็กหญิง", "ด.ญ.", "mrs.", "ms.", "miss"}
+
+# แปลง alias → คำนำหน้ามาตรฐาน
+_TITLE_MAP: dict[str, str] = {
+    "นาย": "นาย", "mr": "นาย", "mr.": "นาย",
+    "เด็กชาย": "เด็กชาย", "ด.ช.": "เด็กชาย", "ดช.": "เด็กชาย", "ดช": "เด็กชาย",
+    "นาง": "นาง", "mrs": "นาง", "mrs.": "นาง",
+    "นางสาว": "นางสาว", "น.ส.": "นางสาว", "นส.": "นางสาว", "นส": "นางสาว",
+    "miss": "นางสาว", "ms": "นางสาว", "ms.": "นางสาว",
+    "เด็กหญิง": "เด็กหญิง", "ด.ญ.": "เด็กหญิง", "ดญ.": "เด็กหญิง", "ดญ": "เด็กหญิง",
+}
+_MALE_TITLES   = {"นาย", "เด็กชาย"}
+_FEMALE_TITLES = {"นางสาว", "นาง", "เด็กหญิง"}
+
+
+def normalize_title(raw: str) -> str:
+    """แปลง alias คำนำหน้า → ค่ามาตรฐาน (เด็กชาย / เด็กหญิง / นาย / นางสาว / นาง)"""
+    t = str(raw).strip()
+    return _TITLE_MAP.get(t.lower(), _TITLE_MAP.get(t, t))
 
 
 def parse_thai_date(s: str) -> date | None:
@@ -147,6 +165,88 @@ def detect_gender_from_prefix(prefix: str) -> str:
     if p in FEMALE_PREFIXES:
         return "หญิง"
     return "ไม่ระบุ"
+
+
+def detect_gender_from_title(title: str) -> str:
+    """อนุมาน gender จากคำนำหน้ามาตรฐาน"""
+    if title in _MALE_TITLES:
+        return "ชาย"
+    if title in _FEMALE_TITLES:
+        return "หญิง"
+    return "ไม่ระบุ"
+
+
+def normalize_national_id(raw: str) -> tuple[str, str | None]:
+    """
+    Normalize และ validate national_id
+    รับได้ 2 รูปแบบ:
+      - เลขบัตรประชาชนไทย: ตัวเลข 13 หลัก (อาจมี dash/space)
+      - G-Code (DMC): G ตามด้วยตัวเลข 12 หลัก เช่น G123456789012
+        → ออกโดยกระทรวงศึกษาฯ สำหรับนักเรียนไร้รัฐ/ไร้สัญชาติ
+    Returns:
+      (normalized_id, None)      — valid
+      ("", error_message)        — invalid, ไม่ควรบันทึก
+    """
+    s = raw.strip()
+    if not s:
+        return "", None
+
+    # G-Code: G/g + 12 digits
+    if re.match(r"^[Gg]\d{12}$", s):
+        return s.upper(), None  # normalize เป็น uppercase G
+
+    # ลบ dash/space/dot แล้วตรวจว่าเป็น 13 ตัวเลข
+    digits = re.sub(r"[\s\-\.]", "", s)
+    if re.match(r"^\d{13}$", digits):
+        return digits, None
+
+    # ไม่ผ่าน — ระบุสาเหตุ
+    if re.match(r"^[Gg]", s):
+        actual = len(re.sub(r"[^0-9]", "", s))
+        return "", f"G-Code ไม่ถูกรูปแบบ (G + {actual} หลัก, ต้องการ G + 12 หลัก)"
+    total = len(re.sub(r"\D", "", s))
+    return "", f"เลขบัตรปชช. มี {total} หลัก (ต้องการ 13 หลัก)"
+
+
+# คำนำหน้าชื่อสถานศึกษาที่ถือว่า "มีอยู่แล้ว" — ไม่ต้องเติมเพิ่ม
+_SCHOOL_KNOWN_PREFIXES = (
+    "โรงเรียน",
+    "วิทยาลัย",       # วิทยาลัยเทคนิค / วิทยาลัยอาชีวศึกษา / วิทยาลัยการอาชีพ
+    "มหาวิทยาลัย",
+    "สำนักงาน",
+    "ศูนย์",
+    "สถาบัน",
+    "วิทยาเขต",
+    "สกร.",
+    "กศน.",
+)
+
+# school_type → คำนำหน้าที่ควรเติม
+_PREFIX_BY_TYPE: dict[str, str] = {
+    "อาชีวศึกษา": "วิทยาลัย",
+    "ประถมศึกษา": "โรงเรียน",
+    "มัธยมศึกษา": "โรงเรียน",
+    "เอกชน":      "โรงเรียน",
+    "สกร.":        "สำนักงานส่งเสริมการเรียนรู้",
+    "กศน.":        "สำนักงานส่งเสริมการเรียนรู้",
+}
+
+
+def normalize_school_name(name: str, school_type: str | None = None) -> str:
+    """
+    เติมคำนำหน้าชื่อสถานศึกษาอัตโนมัติ ถ้าชื่อยังไม่มีคำนำหน้า
+    เช่น "เทคนิคเลย" + อาชีวศึกษา → "วิทยาลัยเทคนิคเลย"
+         "เลยพิทยาคม" + มัธยมศึกษา → "โรงเรียนเลยพิทยาคม"
+         "วิทยาลัยเทคนิคเลย" (มีอยู่แล้ว) → "วิทยาลัยเทคนิคเลย"
+    """
+    name = name.strip()
+    if not name:
+        return name
+    # ถ้ามีคำนำหน้าแล้วไม่ต้องเติม
+    if any(name.startswith(p) for p in _SCHOOL_KNOWN_PREFIXES):
+        return name
+    prefix = _PREFIX_BY_TYPE.get(school_type or "", "โรงเรียน")
+    return f"{prefix}{name}"
 
 
 def normalize_gender(g: str) -> str:
@@ -296,14 +396,14 @@ def smart_parse_excel(content: bytes) -> dict:
     data_rows = [r for r in data_rows if any(c is not None and str(c).strip() for c in r)]
 
     sample_rows = data_rows[:10]
-    thirteen_digit_cols: dict[int, int] = {}  # col_idx → count of 13-digit values
+    thirteen_digit_cols: dict[int, int] = {}  # col_idx → count of valid national_id values
 
     for row in sample_rows:
         for ci, val in enumerate(row):
             if val is None:
                 continue
-            digits = re.sub(r"\D", "", str(val))
-            if len(digits) == 13:
+            normalized, err = normalize_national_id(str(val))
+            if normalized and not err:  # valid Thai ID หรือ G-Code
                 thirteen_digit_cols[ci] = thirteen_digit_cols.get(ci, 0) + 1
 
     if thirteen_digit_cols:
@@ -341,11 +441,13 @@ def smart_parse_excel(content: bytes) -> dict:
                             col_map["student_code"] = ci
                             break
 
-    # 4. Preview 5 แถวแรก (raw + mapped)
+    # 4. Preview 5 แถวแรก
+    # preview_raw เก็บเป็น list[str] ตาม col index — ไม่ใช้ header name เป็น key
+    # เพื่อรองรับกรณีที่มี column ชื่อซ้ำกัน (เช่น ไฟล์ SGS/เชียงกลม)
     preview_raw = []
     preview_mapped = []
     for row in data_rows[:5]:
-        raw = {headers[i]: (str(row[i]).strip() if row[i] is not None else "") for i in range(len(headers))}
+        raw = [str(row[i]).strip() if i < len(row) and row[i] is not None else "" for i in range(len(headers))]
         mapped = _apply_mapping(row, headers, col_map)
         preview_raw.append(raw)
         preview_mapped.append(mapped)
@@ -371,14 +473,15 @@ def _apply_mapping(row: list[Any], headers: list[str], col_map: dict[str, int | 
         v = row[idx]
         return str(v).strip() if v is not None else ""
 
-    prefix = get("prefix")
+    prefix_raw = get("prefix")
+    title = normalize_title(prefix_raw) if prefix_raw else ""
     gender_raw = get("gender")
 
-    # Derive gender: ถ้ามี col gender ใช้เลย ไม่ก็ detect จาก prefix
+    # Derive gender: ถ้ามี col gender ใช้เลย ไม่ก็ derive จาก title ที่ normalize แล้ว
     if gender_raw:
         gender = normalize_gender(gender_raw)
-    elif prefix:
-        gender = detect_gender_from_prefix(prefix)
+    elif title:
+        gender = detect_gender_from_title(title)
     else:
         gender = "ไม่ระบุ"
 
@@ -409,21 +512,16 @@ def _apply_mapping(row: list[Any], headers: list[str], col_map: dict[str, int | 
     student_code_val = get("student_code")
     national_id_val = get("national_id")
 
-    # ── Auto-fix: swap ถ้า student_code เป็น 13 digits (= เลขปชช) แต่ national_id ก็มีค่าอยู่ ──
-    # (ถ้า national_id ว่าง แสดงว่าไม่มี col เลขปชช ไม่ต้อง swap)
-    sc_digits = re.sub(r"\D", "", student_code_val)
-    ni_digits = re.sub(r"\D", "", national_id_val)
-    if national_id_val and len(sc_digits) == 13 and len(ni_digits) != 13:
-        # student_code ดูเหมือนเลขปชช → สลับ
-        student_code_val, national_id_val = national_id_val, student_code_val
-
+    # ── ไม่ swap อัตโนมัติ: ให้ admin ตรวจสอบ mapping ใน UI เอง ──
+    # การ swap อัตโนมัติมีความเสี่ยงสูงที่จะทำให้ student_code และ national_id
+    # สลับกันในฐานข้อมูล ซึ่งทำให้ข้อมูลเสียหายถาวร
 
     return {
         "student_code": student_code_val,
         "national_id": national_id_val,
+        "title": title,
         "first_name": get("first_name"),
         "last_name": get("last_name"),
-        "prefix": prefix,
         "gender": gender,
         "birthdate": get("birthdate"),
         "grade": grade,
@@ -487,6 +585,7 @@ async def smart_bulk_import_students(
     data_rows = [r for r in data_rows if any(c is not None and str(c).strip() for c in r)]
 
     created, updated, skipped, errors = 0, 0, 0, []
+    nid_warnings: list[dict] = []  # แถวที่มี national_id แต่ไม่ครบ 13 หลัก
 
     for row_offset, row in enumerate(data_rows):
         row_num = header_idx + 2 + row_offset  # actual Excel row number
@@ -511,6 +610,12 @@ async def smart_bulk_import_students(
                 skipped += 1
                 continue
 
+            # ข้ามระดับชั้นอนุบาล (อ.1 อ.2 อ.3) — ไม่อยู่ในขอบเขตการประเมิน
+            grade_val = mapped.get("grade", "").strip()
+            if grade_val.startswith("อ.") or grade_val in ("อนุบาล 1", "อนุบาล 2", "อนุบาล 3", "อนุบาล1", "อนุบาล2", "อนุบาล3"):
+                skipped += 1
+                continue
+
             # Parse birthdate
             birthdate = parse_thai_date(mapped["birthdate"])
 
@@ -518,12 +623,27 @@ async def smart_bulk_import_students(
             result = await db.execute(select(Student).where(Student.student_code == student_code))
             existing = result.scalar_one_or_none()
 
-            national_id = mapped["national_id"].strip()
-            # Validate national_id format (13 digits)
-            if national_id and not re.match(r"^\d{13}$", national_id):
-                national_id = re.sub(r"\D", "", national_id)  # strip dashes/spaces
-                if len(national_id) != 13:
-                    national_id = ""
+            # ตรวจ student_code ว่าดูเหมือน national_id หรือไม่ (mapping สลับกัน)
+            sc_digits = re.sub(r"\D", "", student_code)
+            if re.match(r"^\d{13}$", sc_digits) or re.match(r"^[Gg]\d{12}$", student_code):
+                errors.append({
+                    "row": row_num,
+                    "reason": (
+                        f"student_code='{student_code}' ดูเหมือนเลขบัตรประชาชน (13 หลัก) "
+                        f"— กรุณาตรวจสอบ Column Mapping ว่า 'รหัสนักเรียน' และ 'เลขบัตรปชช.' ไม่สลับกัน"
+                    ),
+                })
+                continue  # ไม่ import แถวนี้
+
+            national_id_raw = mapped["national_id"].strip()
+            national_id, nid_err = normalize_national_id(national_id_raw)
+            if nid_err:
+                nid_warnings.append({
+                    "row": row_num,
+                    "student_code": student_code,
+                    "name": f"{first_name} {last_name}".strip(),
+                    "reason": f"{nid_err} — ข้ามการบันทึกเลขบัตรปชช.",
+                })
 
             if existing:
                 # Upsert: update fields ที่เปลี่ยน
@@ -531,6 +651,8 @@ async def smart_bulk_import_students(
                     existing.first_name = first_name
                 if last_name:
                     existing.last_name = last_name
+                if mapped.get("title"):
+                    existing.title = mapped["title"]
                 if mapped["gender"]:
                     existing.gender = mapped["gender"]
                 if mapped["grade"]:
@@ -548,6 +670,7 @@ async def smart_bulk_import_students(
             else:
                 stu = Student(
                     student_code=student_code,
+                    title=mapped.get("title") or None,
                     first_name=first_name,
                     last_name=last_name or "",
                     gender=mapped["gender"] or None,
@@ -561,6 +684,11 @@ async def smart_bulk_import_students(
                     stu.national_id = encrypt_pii(national_id)
                     stu.national_id_hash = hash_pii(national_id)
                 db.add(stu)
+                await db.flush()  # get stu.id before creating user
+
+                # Auto-create User record for student login
+                user = User(student_id=stu.id, role="student", school_id=school_id)
+                db.add(user)
                 created += 1
 
         except Exception as e:
@@ -572,6 +700,7 @@ async def smart_bulk_import_students(
         "updated": updated,
         "skipped": skipped,
         "errors": errors,
+        "nid_warnings": nid_warnings,
         "total_processed": len(data_rows),
     }
 
@@ -645,10 +774,12 @@ async def bulk_import_schools(db: AsyncSession, rows: list[dict]) -> dict:
 
     for i, row in enumerate(rows, start=2):
         try:
-            name = row.get("name", "").strip()
-            if not name:
+            school_type = (row.get("school_type") or "").strip() or None
+            raw_name = row.get("name", "").strip()
+            if not raw_name:
                 errors.append({"row": i, "reason": "name ว่าง"})
                 continue
+            name = normalize_school_name(raw_name, school_type)
 
             district_id = int(row.get("district_id", 0)) if row.get("district_id") else None
             if not district_id:
@@ -660,13 +791,13 @@ async def bulk_import_schools(db: AsyncSession, rows: list[dict]) -> dict:
 
             if existing:
                 existing.district_id = district_id
-                if row.get("school_type"): existing.school_type = row["school_type"]
+                if school_type: existing.school_type = school_type
                 updated += 1
             else:
                 db.add(School(
                     name=name,
                     district_id=district_id,
-                    school_type=row.get("school_type") or None,
+                    school_type=school_type,
                 ))
                 created += 1
 

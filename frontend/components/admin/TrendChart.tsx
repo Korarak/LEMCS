@@ -9,7 +9,7 @@ const DATASETS_CONFIG = [
   { key: "cdi_avg",  label: "CDI (ซึมเศร้าเด็ก)",     color: "#8B5CF6", fill: "rgba(139,92,246,0.08)"  },
 ];
 
-export default function TrendChart({ data }: { data: any[] }) {
+export default function TrendChart({ data, canvasId = "trend-chart" }: { data: any[]; canvasId?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef  = useRef<Chart | null>(null);
 
@@ -90,7 +90,7 @@ export default function TrendChart({ data }: { data: any[] }) {
 
   return (
     <div>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} id={canvasId} />
 
       {/* Reading guide */}
       <div className="mt-3 flex items-start gap-2 px-2 py-2 rounded-lg bg-base-200/60 text-xs text-base-content/70">

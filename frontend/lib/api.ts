@@ -61,6 +61,17 @@ api.interceptors.response.use(
   }
 );
 
+export function getApiError(e: unknown, fallback = "เกิดข้อผิดพลาด"): string {
+  const detail = (e as any)?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "object") {
+    const lines: string[] = [detail.message, detail.hint];
+    if (detail.affected_users) lines.push(`บัญชีที่ต้องจัดการ: ${detail.affected_users}`);
+    return lines.filter(Boolean).join("\n");
+  }
+  return String(detail) || fallback;
+}
+
 // Server-side API call helper (สำหรับ RSC)
 export async function getAssessmentResult(id: string) {
   try {

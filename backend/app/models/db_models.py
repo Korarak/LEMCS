@@ -25,7 +25,8 @@ class School(Base):
     __tablename__ = "schools"
     id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False)
-    district_id = Column(Integer, ForeignKey("districts.id"))
+    district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    affiliation_id = Column(Integer, ForeignKey("affiliations.id"), nullable=True)
     school_type = Column(Text)
 
 class Student(Base):
@@ -34,6 +35,7 @@ class Student(Base):
     student_code = Column(Text, unique=True, nullable=False)
     national_id = Column(Text)        # AES-256 encrypted
     national_id_hash = Column(Text)   # SHA-256 for searching/login
+    title = Column(Text)              # คำนำหน้าชื่อ: เด็กชาย, เด็กหญิง, นาย, นางสาว, นาง
     first_name = Column(Text, nullable=False)
     last_name = Column(Text, nullable=False)
     gender = Column(Text)
@@ -72,6 +74,22 @@ class User(Base):
     affiliation = relationship("Affiliation")
     district = relationship("District")
 
+class SurveyRound(Base):
+    """รอบการสำรวจ — admin เปิด/ปิดเพื่อควบคุมช่วงเวลาเก็บข้อมูล"""
+    __tablename__ = "survey_rounds"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    label = Column(Text, nullable=False)           # เช่น "ภาคเรียน 1/2568"
+    academic_year = Column(Text, nullable=False)   # "2568"
+    term = Column(Integer, nullable=False)         # 1 หรือ 2
+    status = Column(Text, nullable=False, default="open")  # "open" | "closed" | "cancelled"
+    opened_at = Column(DateTime(timezone=True), server_default=func.now())
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
 class Assessment(Base):
     __tablename__ = "assessments"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -83,9 +101,14 @@ class Assessment(Base):
     suicide_risk = Column(Boolean, default=False)
     academic_year = Column(Text)
     term = Column(Integer)
+    survey_round_id = Column(UUID(as_uuid=True), ForeignKey("survey_rounds.id"), nullable=True)
+    grade_snapshot = Column(Text)       # ชั้นเรียน ณ วันที่ทำแบบ
+    classroom_snapshot = Column(Text)   # ห้องเรียน ณ วันที่ทำแบบ
+    filled_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # NULL = นักเรียนกรอกเอง
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     student = relationship("Student")
+    survey_round = relationship("SurveyRound", foreign_keys=[survey_round_id])
 
 class Alert(Base):
     __tablename__ = "alerts"

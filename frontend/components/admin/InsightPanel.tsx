@@ -42,17 +42,19 @@ function getTrendDirection(values: (number | null)[]): "up" | "down" | "stable" 
 export default function InsightPanel({
   summaryData,
   trendData,
+  totalRegistered,
 }: {
   summaryData: { data: SummaryRow[] } | undefined;
   trendData: TrendRow[] | undefined;
+  totalRegistered?: number;
 }) {
   const insights = useMemo<Insight[]>(() => {
     if (!summaryData?.data?.length) return [];
     const rows = summaryData.data;
 
-    const totalStudents     = rows.reduce((s, r) => s + (r.total_students || 0), 0);
-    const totalAssessments  = rows.reduce((s, r) => s + (r.total_assessments || 0), 0);
+    const totalStudents     = totalRegistered ?? rows.reduce((s, r) => s + (r.total_students || 0), 0);
     const totalCount        = rows.reduce((s, r) => s + r.count, 0);
+    const totalAssessments  = totalCount;
     const criticalCount     = rows.filter(r => CRITICAL_LEVELS.has(r.severity_level)).reduce((s, r) => s + r.count, 0);
     const atRiskCount       = rows.filter(r => RISK_LEVELS.has(r.severity_level)).reduce((s, r) => s + r.count, 0);
     const suicideRiskCount  = rows.reduce((s, r) => s + (r.suicide_risk_count || 0), 0);

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
+import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -28,36 +30,57 @@ const SEVERITY_BADGE: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
-export default function ReportsPage() {
-  const [schoolId,       setSchoolId]       = useState("");
-  const [assessmentType, setAssessmentType] = useState("");
-  const [dateFrom,       setDateFrom]       = useState("");
-  const [dateTo,         setDateTo]         = useState("");
-  const [page,           setPage]           = useState(0);
+const EMPTY_FILTERS: DashboardFilters = {
+  survey_round_id: "",
+  affiliation_id: "", district_id: "", school_id: "",
+  assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
+};
 
-  const { data: schools } = useSWR("/admin/schools", fetcher);
+export default function ReportsPage() {
+  const { toast } = useToast();
+  const [filters, setFilters] = useState<DashboardFilters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(0);
+
+  const handleFilterChange = useCallback((df: DashboardFilters) => {
+    setFilters(df);
+    setPage(0);
+  }, []);
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    if (schoolId)       p.set("school_id",       schoolId);
-    if (assessmentType) p.set("assessment_type",  assessmentType);
+    if (filters.survey_round_id) p.set("survey_round_id", filters.survey_round_id);
+    if (filters.affiliation_id)  p.set("affiliation_id",  filters.affiliation_id);
+    if (filters.district_id)     p.set("district_id",     filters.district_id);
+    if (filters.school_id)       p.set("school_id",       filters.school_id);
+    if (filters.assessment_type) p.set("assessment_type", filters.assessment_type);
+    if (filters.grade)           p.set("grade",           filters.grade);
+    if (filters.gender)          p.set("gender",          filters.gender);
+    if (!filters.survey_round_id && filters.date_from) p.set("date_from", filters.date_from);
+    if (!filters.survey_round_id && filters.date_to)   p.set("date_to",   filters.date_to);
     p.set("limit",  String(PAGE_SIZE));
     p.set("offset", String(page * PAGE_SIZE));
     return p.toString();
-  }, [schoolId, assessmentType, page]);
+  }, [filters, page]);
 
   const { data: reports, isLoading } = useSWR(`/reports/data?${qs}`, fetcher);
 
-  const handleFilterChange = () => setPage(0);
+  function buildExportBody() {
+    const body: any = {};
+    if (filters.survey_round_id) body.survey_round_id = filters.survey_round_id;
+    if (filters.affiliation_id)  body.affiliation_id  = Number(filters.affiliation_id);
+    if (filters.district_id)     body.district_id     = Number(filters.district_id);
+    if (filters.school_id)       body.school_id       = Number(filters.school_id);
+    if (filters.assessment_type) body.assessment_type = filters.assessment_type;
+    if (filters.grade)           body.grade           = filters.grade;
+    if (filters.gender)          body.gender          = filters.gender;
+    if (!filters.survey_round_id && filters.date_from) body.date_from = filters.date_from;
+    if (!filters.survey_round_id && filters.date_to)   body.date_to   = filters.date_to;
+    return body;
+  }
 
   const handleExportPDF = async () => {
     try {
-      const body: any = {};
-      if (schoolId)       body.school_id       = Number(schoolId);
-      if (assessmentType) body.assessment_type = assessmentType;
-      if (dateFrom)       body.date_from       = dateFrom;
-      if (dateTo)         body.date_to         = dateTo;
-      const res = await api.post("/reports/export/pdf", body, { responseType: "blob" });
+      const res = await api.post("/reports/export/pdf", buildExportBody(), { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;
@@ -66,18 +89,13 @@ export default function ReportsPage() {
       a.click();
       a.remove();
     } catch {
-      alert("ไม่สามารถส่งออก PDF ได้");
+      toast("ไม่สามารถส่งออก PDF ได้", "error");
     }
   };
 
   const handleExportExcel = async () => {
     try {
-      const body: any = {};
-      if (schoolId)       body.school_id       = Number(schoolId);
-      if (assessmentType) body.assessment_type = assessmentType;
-      if (dateFrom)       body.date_from       = dateFrom;
-      if (dateTo)         body.date_to         = dateTo;
-      const res = await api.post("/reports/export/excel", body, { responseType: "blob" });
+      const res = await api.post("/reports/export/excel", buildExportBody(), { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a");
       a.href = url;
@@ -86,7 +104,7 @@ export default function ReportsPage() {
       a.click();
       a.remove();
     } catch {
-      alert("ไม่สามารถส่งออก Excel ได้");
+      toast("ไม่สามารถส่งออก Excel ได้", "error");
     }
   };
 
@@ -109,46 +127,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Filters */}
-      <div className="card bg-base-100 shadow">
-        <div className="card-body py-3">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <select
-              className="select select-bordered select-sm w-full"
-              value={schoolId}
-              onChange={e => { setSchoolId(e.target.value); handleFilterChange(); }}
-            >
-              <option value="">ทุกโรงเรียน</option>
-              {schools?.map((s: any) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-
-            <select
-              className="select select-bordered select-sm w-full"
-              value={assessmentType}
-              onChange={e => { setAssessmentType(e.target.value); handleFilterChange(); }}
-            >
-              <option value="">ทุกแบบประเมิน</option>
-              <option value="ST5">ST-5 (ความเครียด)</option>
-              <option value="PHQA">PHQ-A (ซึมเศร้า)</option>
-              <option value="CDI">CDI (ซึมเศร้าเด็ก)</option>
-            </select>
-
-            <input
-              type="date"
-              className="input input-bordered input-sm w-full"
-              value={dateFrom}
-              onChange={e => { setDateFrom(e.target.value); handleFilterChange(); }}
-            />
-            <input
-              type="date"
-              className="input input-bordered input-sm w-full"
-              value={dateTo}
-              onChange={e => { setDateTo(e.target.value); handleFilterChange(); }}
-            />
-          </div>
-        </div>
-      </div>
+      <FilterBar onFilterChange={handleFilterChange} />
 
       {/* Table */}
       <div className="card bg-base-100 shadow overflow-x-auto">

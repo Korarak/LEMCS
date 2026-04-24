@@ -1,0 +1,456 @@
+"use client";
+
+import { useState, useCallback, Suspense } from "react";
+import useSWR from "swr";
+import { useRouter, useSearchParams } from "next/navigation";
+import { api } from "@/lib/api";
+
+const fetcher = (url: string) => api.get(url).then(r => r.data);
+
+const TYPE_LABEL: Record<string, string> = {
+  ST5:  "ST-5 ความเครียด",
+  CDI:  "CDI ซึมเศร้า",
+  PHQA: "PHQ-A ซึมเศร้า",
+};
+
+const SEVERITY_BADGE: Record<string, string> = {
+  normal:     "badge-success",
+  none:       "badge-success",
+  mild:       "badge-info",
+  moderate:   "badge-warning",
+  severe:     "badge-error",
+  very_severe:"badge-error",
+  clinical:   "badge-error",
+};
+
+const SEVERITY_LABEL: Record<string, string> = {
+  normal: "ปกติ", none: "ไม่มีอาการ", mild: "น้อย",
+  moderate: "ปานกลาง", severe: "สูง", very_severe: "รุนแรง", clinical: "ต้องดูแล",
+};
+
+const ALL_GRADES = [
+  "ป.1","ป.2","ป.3","ป.4","ป.5","ป.6",
+  "ม.1","ม.2","ม.3","ม.4","ม.5","ม.6",
+  "ปวช.1","ปวช.2","ปวช.3",
+  "ปวส.1","ปวส.2",
+];
+
+interface AssessmentDone {
+  severity_level: string;
+  score: number;
+  filled_by_proxy: boolean;
+  created_at: string | null;
+}
+
+interface StudentRow {
+  id: string;
+  student_code: string;
+  title: string | null;
+  first_name: string;
+  last_name: string;
+  gender: string;
+  grade: string;
+  classroom: string;
+  age: number | null;
+  available_types: string[];
+  assessments_done: Record<string, AssessmentDone>;
+}
+
+function ProxyAssessInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ข้อมูล admin ที่ login
+  const { data: me } = useSWR("/admin/me", fetcher);
+  const isSchoolAdmin = me?.role === "schooladmin";
+
+  // filter — init จาก URL เพื่อให้ย้อนกลับแล้ว filter คงอยู่
+  const [affiliationId, setAffiliationId] = useState(() => searchParams.get("affiliation_id") ?? "");
+  const [districtId,    setDistrictId]    = useState(() => searchParams.get("district_id") ?? "");
+  const [schoolId,      setSchoolId]      = useState(() => searchParams.get("school_id") ?? "");
+  const [grade,         setGrade]         = useState(() => searchParams.get("grade") ?? "");
+  const [classroom,     setClassroom]     = useState(() => searchParams.get("classroom") ?? "");
+
+  // client-side filters (กรองบน data ที่ fetch มาแล้ว — ไม่ต้องเรียก API เพิ่ม)
+  const [filterStatus,  setFilterStatus]  = useState<"" | "pending" | "done">("");
+  const [filterGender,  setFilterGender]  = useState("");
+  const [filterPending, setFilterPending] = useState("");
+
+  // sync filter → URL (replace ไม่สร้าง history entry ใหม่)
+  const syncUrl = useCallback((patch: Record<string, string>) => {
+    const p = new URLSearchParams(searchParams.toString());
+    Object.entries(patch).forEach(([k, v]) => v ? p.set(k, v) : p.delete(k));
+    router.replace(`/admin/proxy-assess?${p}`);
+  }, [router, searchParams]);
+
+  // Cascade dropdowns
+  const { data: affiliations } = useSWR(!isSchoolAdmin ? "/admin/affiliations" : null, fetcher);
+  const { data: districts }    = useSWR(
+    !isSchoolAdmin
+      ? affiliationId
+        ? `/admin/districts?affiliation_id=${affiliationId}`
+        : "/admin/districts"
+      : null,
+    fetcher,
+  );
+  const { data: schools } = useSWR(
+    !isSchoolAdmin
+      ? districtId
+        ? `/admin/schools?district_id=${districtId}`
+        : affiliationId
+        ? `/admin/schools?affiliation_id=${affiliationId}`
+        : "/admin/schools"
+      : null,
+    fetcher,
+  );
+
+  // effective school
+  const effectiveSchoolId = isSchoolAdmin ? (me?.school_id ?? "") : schoolId;
+
+  // ดึงห้องเรียนจริงจาก DB — ขึ้นกับ school + grade
+  const classroomUrl = (isSchoolAdmin || effectiveSchoolId) && grade
+    ? `/admin/classrooms?grade=${grade}${effectiveSchoolId ? `&school_id=${effectiveSchoolId}` : ""}`
+    : null;
+  const { data: classrooms } = useSWR<string[]>(classroomUrl, fetcher);
+
+  // ดึงนักเรียน
+  const canFetch = grade && (isSchoolAdmin || effectiveSchoolId);
+  const params = new URLSearchParams();
+  if (grade) params.set("grade", grade);
+  if (classroom) params.set("classroom", classroom);
+  if (!isSchoolAdmin && effectiveSchoolId) params.set("school_id", String(effectiveSchoolId));
+
+  const { data: students, isLoading } = useSWR<StudentRow[]>(
+    canFetch ? `/admin/proxy-assess/students?${params}` : null,
+    fetcher,
+  );
+
+  // ตัวเลขความคืบหน้าคิดจาก raw list ทั้งหมด (ไม่ถูกกระทบโดย client-side filter)
+  const done  = (students ?? []).filter(s => s.available_types.every(t => s.assessments_done[t])).length;
+  const total = (students ?? []).length;
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // กรอง client-side
+  const visibleStudents = (students ?? []).filter(s => {
+    if (filterGender && s.gender !== filterGender) return false;
+    if (filterStatus === "pending" && s.available_types.every(t => s.assessments_done[t])) return false;
+    if (filterStatus === "done"    && !s.available_types.every(t => s.assessments_done[t])) return false;
+    if (filterPending && (
+      !s.available_types.includes(filterPending) || s.assessments_done[filterPending]
+    )) return false;
+    return true;
+  });
+
+  const selectedSchoolName = isSchoolAdmin
+    ? undefined
+    : schools?.find((s: any) => String(s.id) === String(schoolId))?.name;
+
+  // สร้าง URL ไปหน้ากรอก พร้อม context ชั้นเรียน
+  const buildFormUrl = (studentId: string, type: string) => {
+    const p = new URLSearchParams();
+    if (grade) p.set("grade", grade);
+    if (classroom) p.set("classroom", classroom);
+    if (effectiveSchoolId) p.set("school_id", String(effectiveSchoolId));
+    return `/admin/proxy-assess/${studentId}/${type.toLowerCase()}?${p}`;
+  };
+
+  // คนแรกที่ยังไม่ครบในชั้น
+  const firstIncomplete = students?.find(
+    s => s.available_types.some(t => !s.assessments_done[t])
+  );
+  const firstPendingType = firstIncomplete?.available_types.find(
+    t => !firstIncomplete.assessments_done[t]
+  );
+
+  return (
+    <div className="space-y-5 max-w-6xl mx-auto">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold">📋 กรอกแบบประเมินชั้นเรียน</h1>
+        <p className="text-sm text-base-content/60">ครูถามนักเรียนทีละคน แล้วกรอกคำตอบในระบบแทน</p>
+      </div>
+
+      {/* Filter */}
+      <div className="card bg-base-100 shadow">
+        <div className="card-body py-3 px-4 space-y-3">
+
+          {/* Org filters — เฉพาะ non-schooladmin */}
+          {!isSchoolAdmin && me && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="form-control">
+                <label className="label py-0.5"><span className="label-text text-xs">สังกัด</span></label>
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={affiliationId}
+                  onChange={e => {
+                    setAffiliationId(e.target.value); setDistrictId(""); setSchoolId(""); setGrade(""); setClassroom("");
+                    syncUrl({ affiliation_id: e.target.value, district_id: "", school_id: "", grade: "", classroom: "" });
+                  }}
+                >
+                  <option value="">ทุกสังกัด</option>
+                  {affiliations?.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-control">
+                <label className="label py-0.5"><span className="label-text text-xs">เขตพื้นที่</span></label>
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={districtId}
+                  onChange={e => {
+                    setDistrictId(e.target.value); setSchoolId(""); setGrade(""); setClassroom("");
+                    syncUrl({ district_id: e.target.value, school_id: "", grade: "", classroom: "" });
+                  }}
+                >
+                  <option value="">ทุกเขตพื้นที่</option>
+                  {districts?.map((d: any) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-control">
+                <label className="label py-0.5"><span className="label-text text-xs">โรงเรียน *</span></label>
+                <select
+                  className="select select-bordered select-sm w-full"
+                  value={schoolId}
+                  onChange={e => {
+                    setSchoolId(e.target.value); setGrade(""); setClassroom("");
+                    syncUrl({ school_id: e.target.value, grade: "", classroom: "" });
+                  }}
+                >
+                  <option value="">— เลือกโรงเรียน —</option>
+                  {schools?.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Grade + Classroom */}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="form-control">
+              <label className="label py-0.5"><span className="label-text text-xs">ระดับชั้น *</span></label>
+              <select
+                className="select select-bordered select-sm"
+                value={grade}
+                onChange={e => {
+                  setGrade(e.target.value); setClassroom("");
+                  setFilterStatus(""); setFilterGender(""); setFilterPending("");
+                  syncUrl({ grade: e.target.value, classroom: "" });
+                }}
+                disabled={!isSchoolAdmin && !schoolId}
+              >
+                <option value="">— เลือกชั้น —</option>
+                <optgroup label="ประถมศึกษา">
+                  {ALL_GRADES.slice(0, 6).map(g => <option key={g} value={g}>{g}</option>)}
+                </optgroup>
+                <optgroup label="มัธยมศึกษา">
+                  {ALL_GRADES.slice(6, 12).map(g => <option key={g} value={g}>{g}</option>)}
+                </optgroup>
+                <optgroup label="อาชีวศึกษา (ปวช.)">
+                  {ALL_GRADES.slice(12, 15).map(g => <option key={g} value={g}>{g}</option>)}
+                </optgroup>
+                <optgroup label="อาชีวศึกษา (ปวส.)">
+                  {ALL_GRADES.slice(15).map(g => <option key={g} value={g}>{g}</option>)}
+                </optgroup>
+              </select>
+            </div>
+            <div className="form-control">
+              <label className="label py-0.5"><span className="label-text text-xs">ห้อง</span></label>
+              <select
+                className="select select-bordered select-sm w-24"
+                value={classroom}
+                onChange={e => {
+                  setClassroom(e.target.value);
+                  setFilterStatus(""); setFilterGender(""); setFilterPending("");
+                  syncUrl({ classroom: e.target.value });
+                }}
+                disabled={!grade}
+              >
+                <option value="">ทุกห้อง</option>
+                {(classrooms ?? []).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            {!isSchoolAdmin && !schoolId && (
+              <p className="text-sm text-base-content/40 self-end pb-1">← เลือกโรงเรียนก่อน</p>
+            )}
+            {(isSchoolAdmin || schoolId) && !grade && (
+              <p className="text-sm text-base-content/40 self-end pb-1">← เลือกชั้นเพื่อดูรายชื่อ</p>
+            )}
+          </div>
+
+          {/* Client-side filters — แสดงเมื่อโหลดข้อมูลแล้ว */}
+          {students && students.length > 0 && (
+            <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-base-200">
+              <span className="text-xs text-base-content/40 font-medium">กรองรายชื่อ:</span>
+
+              <select
+                className="select select-bordered select-xs"
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value as "" | "pending" | "done")}
+              >
+                <option value="">ทุกสถานะ</option>
+                <option value="pending">⏳ ยังไม่ครบ</option>
+                <option value="done">✅ ครบแล้ว</option>
+              </select>
+
+              <select
+                className="select select-bordered select-xs"
+                value={filterGender}
+                onChange={e => setFilterGender(e.target.value)}
+              >
+                <option value="">ทุกเพศ</option>
+                <option value="ชาย">ชาย</option>
+                <option value="หญิง">หญิง</option>
+              </select>
+
+              <select
+                className="select select-bordered select-xs"
+                value={filterPending}
+                onChange={e => setFilterPending(e.target.value)}
+              >
+                <option value="">ทุกแบบประเมิน</option>
+                <option value="ST5">ค้าง ST-5</option>
+                <option value="CDI">ค้าง CDI</option>
+                <option value="PHQA">ค้าง PHQ-A</option>
+              </select>
+
+              {(filterStatus || filterGender || filterPending) && (
+                <button
+                  className="btn btn-ghost btn-xs text-base-content/40 hover:text-error"
+                  onClick={() => { setFilterStatus(""); setFilterGender(""); setFilterPending(""); }}
+                >
+                  ✕ ล้าง
+                </button>
+              )}
+
+              {(filterStatus || filterGender || filterPending) && (
+                <span className="text-xs text-base-content/50 ml-auto">
+                  แสดง {visibleStudents.length}/{total} คน
+                </span>
+              )}
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* Progress summary */}
+      {grade && students && students.length > 0 && (
+        <div className="card bg-base-100 shadow">
+          <div className="card-body py-3 px-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium">
+                ความคืบหน้า {selectedSchoolName ? `${selectedSchoolName} · ` : ""}ชั้น {grade}{classroom ? `/${classroom}` : ""}
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-primary">{done}/{total} คน ({pct}%)</span>
+                {firstIncomplete && firstPendingType && (
+                  <button
+                    className="btn btn-primary btn-sm gap-1.5"
+                    onClick={() => router.push(buildFormUrl(firstIncomplete.id, firstPendingType))}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none"
+                      viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round"
+                        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                    </svg>
+                    {done === 0 ? "เริ่มกรอกชั้นเรียน" : "กรอกต่อ"}
+                  </button>
+                )}
+                {done === total && total > 0 && (
+                  <span className="badge badge-success gap-1">✓ ครบทุกคนแล้ว</span>
+                )}
+              </div>
+            </div>
+            <progress className="progress progress-primary w-full" value={pct} max={100} />
+          </div>
+        </div>
+      )}
+
+      {/* Student list */}
+      {canFetch && (
+        <div className="card bg-base-100 shadow overflow-x-auto">
+          <table className="table table-sm w-full">
+            <thead>
+              <tr className="bg-base-200/50">
+                <th>รหัส</th>
+                <th>ชื่อ – นามสกุล</th>
+                <th className="text-center">อายุ</th>
+                {["ST5","CDI","PHQA"].map(t => (
+                  <th key={t} className="text-center text-xs">{TYPE_LABEL[t]}</th>
+                ))}
+                <th className="text-center">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={7} className="text-center py-10"><span className="loading loading-spinner"/></td></tr>
+              ) : !students?.length ? (
+                <tr><td colSpan={7} className="text-center py-10 text-base-content/40">ไม่พบนักเรียนในชั้นนี้</td></tr>
+              ) : !visibleStudents.length ? (
+                <tr><td colSpan={7} className="text-center py-10 text-base-content/40">ไม่มีนักเรียนตรงเงื่อนไขที่กรอง</td></tr>
+              ) : visibleStudents.map(s => (
+                <tr key={s.id} className="hover">
+                  <td className="font-mono text-xs">{s.student_code}</td>
+                  <td className="font-medium">
+                    {s.title && <span className="text-base-content/50 mr-1 text-xs">{s.title}</span>}
+                    {s.first_name} {s.last_name}
+                  </td>
+                  <td className="text-center text-sm">{s.age ?? "—"}</td>
+                  {["ST5","CDI","PHQA"].map(t => {
+                    const avail = s.available_types.includes(t);
+                    const done  = s.assessments_done[t];
+                    return (
+                      <td key={t} className="text-center">
+                        {!avail ? (
+                          <span className="text-base-content/20 text-xs">—</span>
+                        ) : done ? (
+                          <span className={`badge badge-xs ${SEVERITY_BADGE[done.severity_level] ?? "badge-ghost"}`}>
+                            {SEVERITY_LABEL[done.severity_level] ?? done.severity_level}
+                            {done.filled_by_proxy && <span className="ml-1 opacity-60">✏️</span>}
+                          </span>
+                        ) : (
+                          <span className="badge badge-outline badge-xs text-base-content/40">ยังไม่ทำ</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="text-center">
+                    <div className="flex gap-1 justify-center flex-wrap">
+                      {s.available_types.map(t => (
+                        <button
+                          key={t}
+                          className={`btn btn-xs ${s.assessments_done[t] ? "btn-ghost text-base-content/40" : "btn-outline"}`}
+                          onClick={() => router.push(buildFormUrl(s.id, t))}
+                          title={s.assessments_done[t] ? `กรอกซ้ำ ${TYPE_LABEL[t]}` : `กรอก ${TYPE_LABEL[t]}`}
+                        >
+                          {t}{s.assessments_done[t] ? " ✓" : ""}
+                        </button>
+                      ))}
+                      {s.available_types.length === 0 && (
+                        <span className="text-xs text-base-content/30">ไม่มีแบบประเมิน</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ProxyAssessPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center"><span className="loading loading-spinner loading-md text-primary" /></div>}>
+      <ProxyAssessInner />
+    </Suspense>
+  );
+}

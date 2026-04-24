@@ -21,18 +21,55 @@ async def lifespan(app: FastAPI):
     except IntegrityError:
         pass  # Another worker already created the tables
 
-    # Migrate existing DB: add new RBAC columns if they don't exist
+    # Migrate existing DB: each migration in its own transaction so failures are isolated
     from sqlalchemy import text as sa_text
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(sa_text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliation_id INTEGER REFERENCES affiliations(id)"
-            ))
-            await conn.execute(sa_text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id)"
-            ))
-    except Exception as e:
-        print(f"[Migration] Column migration skipped or already applied: {e}")
+
+    _migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliation_id INTEGER REFERENCES affiliations(id)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS district_id INTEGER REFERENCES districts(id)",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS filled_by_user_id UUID REFERENCES users(id)",
+        "ALTER TABLE students ADD COLUMN IF NOT EXISTS title TEXT",
+        # Survey Round feature — table must be created before the FK column on assessments
+        """CREATE TABLE IF NOT EXISTS survey_rounds (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            label TEXT NOT NULL,
+            academic_year TEXT NOT NULL,
+            term INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            opened_at TIMESTAMPTZ DEFAULT now(),
+            closed_at TIMESTAMPTZ,
+            created_by UUID REFERENCES users(id)
+        )""",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS survey_round_id UUID REFERENCES survey_rounds(id)",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS grade_snapshot TEXT",
+        "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS classroom_snapshot TEXT",
+        "ALTER TABLE survey_rounds ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+        "ALTER TABLE schools ADD COLUMN IF NOT EXISTS affiliation_id INTEGER REFERENCES affiliations(id)",
+        # backfill: โรงเรียน สกร. ที่สร้างก่อนมี affiliation_id → ตั้งค่าจาก affiliations
+        """UPDATE schools SET affiliation_id = (
+            SELECT id FROM affiliations WHERE name ILIKE '%สกร%' LIMIT 1
+        ) WHERE school_type = 'สกร.' AND affiliation_id IS NULL
+          AND EXISTS (SELECT 1 FROM affiliations WHERE name ILIKE '%สกร%')""",
+        # backfill: เชื่อม district_id ให้โรงเรียน สกร. ที่ยังไม่มี
+        # จับคู่ด้วย: ชื่ออำเภอในชื่อโรงเรียน (หลัง "อำเภอ") ↔ ชื่อ district (ILIKE)
+        """UPDATE schools s
+           SET district_id = (
+               SELECT d.id FROM districts d
+               WHERE d.affiliation_id = s.affiliation_id
+                 AND d.name ILIKE '%' || SUBSTRING(s.name FROM 'อำเภอ(.+)') || '%'
+               LIMIT 1
+           )
+           WHERE s.school_type = 'สกร.'
+             AND s.district_id IS NULL
+             AND s.affiliation_id IS NOT NULL
+             AND SUBSTRING(s.name FROM 'อำเภอ(.+)') IS NOT NULL""",
+    ]
+    for _sql in _migrations:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(sa_text(_sql))
+        except Exception as e:
+            print(f"[Migration] Skipped (already applied or error): {e}")
         
     # Seed a test student for Phase 1 OTP testing
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +136,8 @@ _cors_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3100",                       # staging container port
     "http://127.0.0.1:3100",
+    "http://localhost:6300",                       # local dev (alt port)
+    "http://127.0.0.1:6300",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -113,11 +152,13 @@ app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
 
 # Routers
 from app.routers import auth, assessments, reports, alerts, admin
+from app.routers import survey_rounds
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(assessments.router, prefix="/api/assessments", tags=["assessments"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(survey_rounds.router, prefix="/api/survey-rounds", tags=["survey-rounds"])
 
 # For metrics
 Instrumentator().instrument(app).expose(app)

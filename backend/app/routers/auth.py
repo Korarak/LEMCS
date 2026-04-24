@@ -1,13 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from datetime import datetime, timezone
 from app.database import get_db
-from app.schemas.auth import LoginRequest, OTPRequest, OTPVerifyRequest, TokenResponse
+from app.schemas.auth import LoginRequest, OTPRequest, SKRLoginRequest, OTPVerifyRequest, TokenResponse
 from app.services.auth_service import (
     request_otp, verify_otp, create_tokens, refresh_access_token
 )
+from app.deps import get_current_student
+from app.models.db_models import Student, School
 
 router = APIRouter()
+
+@router.get("/me")
+async def get_me(student: Student = Depends(get_current_student), db: AsyncSession = Depends(get_db)):
+    """ดึงข้อมูลนักเรียนที่ login อยู่"""
+    school_name = None
+    if student.school_id:
+        result = await db.execute(select(School).where(School.id == student.school_id))
+        school = result.scalar_one_or_none()
+        school_name = school.name if school else None
+    return {
+        "student_code": student.student_code,
+        "title": student.title,
+        "first_name": student.first_name,
+        "last_name": student.last_name,
+        "gender": student.gender,
+        "grade": student.grade,
+        "classroom": student.classroom,
+        "school_name": school_name,
+        "birthdate": student.birthdate.isoformat() if student.birthdate else None,
+    }
 
 @router.post("/otp/request")
 async def request_login_otp(body: OTPRequest, db: AsyncSession = Depends(get_db)):
@@ -40,9 +64,32 @@ async def login_bypass(body: OTPRequest, db: AsyncSession = Depends(get_db)):
     user = await get_user_by_student_id(db, student.id)
     if not user:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลผู้ใช้งานของนักเรียนนี้")
-        
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
+
+@router.post("/login/skr", response_model=TokenResponse)
+async def login_skr(body: SKRLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Login สำหรับนักศึกษา สกร.: ยืนยันตัวตนด้วย student_code + วันเกิด (ไม่ต้องใช้เลขบัตรปชช.)"""
+    from app.services.auth_service import get_student_by_code, get_user_by_student_id, create_tokens
+
+    student = await get_student_by_code(db, body.student_code)
+    if not student:
+        raise HTTPException(status_code=404, detail="ไม่พบรหัสนักศึกษาในระบบ")
+
+    if student.birthdate != body.birthdate:
+        raise HTTPException(status_code=401, detail="ข้อมูลวันเกิดไม่ถูกต้อง")
+
+    user = await get_user_by_student_id(db, student.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลผู้ใช้งานของนักศึกษานี้")
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+    return await create_tokens(user)
+
 
 @router.post("/otp/verify", response_model=TokenResponse)
 async def verify_login_otp(body: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
@@ -50,6 +97,8 @@ async def verify_login_otp(body: OTPVerifyRequest, db: AsyncSession = Depends(ge
     user = await verify_otp(db, body.student_code, body.otp)
     if not user:
         raise HTTPException(status_code=401, detail="OTP ไม่ถูกต้องหรือหมดอายุ")
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
 
@@ -68,7 +117,9 @@ async def login_with_password(form_data: OAuth2PasswordRequestForm = Depends(), 
         
     if not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง")
-        
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
     tokens = await create_tokens(user)
     return tokens
 
