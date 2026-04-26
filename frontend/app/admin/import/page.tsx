@@ -235,7 +235,7 @@ export default function SmartImportPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, schools]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
