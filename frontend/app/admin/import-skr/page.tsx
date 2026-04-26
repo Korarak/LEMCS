@@ -58,10 +58,12 @@ interface Affiliation {
   name: string;
 }
 
+
 interface School {
   id: number;
   name: string;
   school_type: string | null;
+  student_count?: number;
 }
 
 type Step = 1 | 2 | 3;
@@ -116,9 +118,11 @@ function SheetCard({
           onChange={onToggle}
         />
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm">{sheet.name}</div>
-          <div className="text-xs text-base-content/50 mt-0.5">
-            {sheet.total_rows.toLocaleString()} นักศึกษา
+          <div className="font-semibold text-sm">
+            {sheet.name}
+            <span className="ml-1.5 text-xs font-normal text-base-content/50">
+              ({sheet.total_rows.toLocaleString()} คน)
+            </span>
           </div>
         </div>
         <span className={`badge badge-sm ${selected ? "badge-primary" : "badge-ghost"}`}>
@@ -248,16 +252,17 @@ export default function ImportSkrPage() {
   const [affiliations, setAffiliations] = useState<Affiliation[]>([]);
   const [selectedAffId, setSelectedAffId] = useState<number | "">("");
 
-  // Truncate zone
+  // Truncate by school
   const [skrSchools,       setSkrSchools]       = useState<School[]>([]);
   const [truncateSearch,   setTruncateSearch]   = useState("");
   const [truncateSchoolId, setTruncateSchoolId] = useState<number | "">("");
   const [confirmTruncate,  setConfirmTruncate]  = useState(false);
   const [truncating,       setTruncating]       = useState(false);
 
+
   useEffect(() => {
     api.get("/admin/affiliations").then(r => setAffiliations(r.data)).catch(() => {});
-    api.get("/admin/schools").then(r => {
+    api.get("/admin/schools/stats").then(r => {
       const all: School[] = r.data;
       setSkrSchools(all.filter(s => s.school_type === "สกร."));
     }).catch(() => {});
@@ -590,37 +595,41 @@ export default function ImportSkrPage() {
               <p className="text-xs text-base-content/50">ใช้กรณี import ผิด — ลบนักศึกษาและ account ทั้งหมดของ สกร.อำเภอที่เลือก</p>
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              placeholder="🔍 พิมพ์ชื่ออำเภอ..."
-              className="input input-bordered input-sm input-error flex-1"
-              value={truncateSearch}
-              onChange={e => { setTruncateSearch(e.target.value); setTruncateSchoolId(""); }}
-            />
-            <select
-              className="select select-bordered select-sm select-error w-full sm:w-72"
-              value={truncateSchoolId}
-              onChange={e => setTruncateSchoolId(Number(e.target.value) || "")}
-            >
-              <option value="">— เลือกโรงเรียน สกร. ({filteredTruncateSchools.length} แห่ง) —</option>
-              {filteredTruncateSchools.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <button
-              className="btn btn-error btn-sm whitespace-nowrap"
-              disabled={!truncateSchoolId || truncating}
-              onClick={() => setConfirmTruncate(true)}
-            >
-              {truncating ? <span className="loading loading-spinner loading-xs" /> : "🗑️ ล้างข้อมูล"}
-            </button>
-          </div>
-          {truncateSchoolId && (
-            <div className="alert alert-error py-2 text-xs">
-              ⚠️ จะลบนักศึกษา <strong>ทั้งหมด</strong> ของ <strong>{skrSchools.find(s => s.id === truncateSchoolId)?.name}</strong> — ไม่สามารถกู้คืนได้
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                placeholder="🔍 พิมพ์ชื่ออำเภอ..."
+                className="input input-bordered input-sm input-error flex-1"
+                value={truncateSearch}
+                onChange={e => { setTruncateSearch(e.target.value); setTruncateSchoolId(""); }}
+              />
+              <select
+                className="select select-bordered select-sm select-error w-full sm:w-72"
+                value={truncateSchoolId}
+                onChange={e => setTruncateSchoolId(Number(e.target.value) || "")}
+              >
+                <option value="">— เลือกโรงเรียน สกร. ({filteredTruncateSchools.length} แห่ง) —</option>
+                {filteredTruncateSchools.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.student_count != null ? ` (${s.student_count.toLocaleString()} คน)` : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-error btn-sm whitespace-nowrap"
+                disabled={!truncateSchoolId || truncating}
+                onClick={() => setConfirmTruncate(true)}
+              >
+                {truncating ? <span className="loading loading-spinner loading-xs" /> : "🗑️ ล้างข้อมูล"}
+              </button>
             </div>
-          )}
+            {truncateSchoolId && (
+              <div className="alert alert-error py-2 text-xs">
+                <span>⚠️ จะลบนักศึกษา <strong>ทั้งหมด</strong> ของ <strong>{skrSchools.find(s => s.id === truncateSchoolId)?.name}</strong> — ไม่สามารถกู้คืนได้</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -634,6 +643,7 @@ export default function ImportSkrPage() {
         onConfirm={doTruncate}
         onCancel={() => setConfirmTruncate(false)}
       />
+
     </div>
   );
 }

@@ -13,6 +13,7 @@ router = APIRouter()
 
 class AffiliationBody(BaseModel):
     name: str
+    abbreviation: str | None = None
 
 @router.get("/affiliations")
 async def get_affiliations(
@@ -28,7 +29,32 @@ async def get_affiliations(
     result = await db.execute(query.order_by(Affiliation.name))
     affiliations = result.scalars().all()
 
-    return [{"id": a.id, "name": a.name} for a in affiliations]
+    return [{"id": a.id, "name": a.name, "abbreviation": a.abbreviation} for a in affiliations]
+
+@router.get("/affiliations/stats")
+async def get_affiliations_stats(
+    current_user = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """จำนวนนักศึกษาในระบบแยกตามสังกัด"""
+    # นับนักศึกษาผ่าน school → district → affiliation และ school → affiliation (direct)
+    rows = await db.execute(
+        select(
+            Affiliation.id,
+            Affiliation.name,
+            Affiliation.abbreviation,
+            func.count(func.distinct(Student.id)).label("student_count"),
+        )
+        .outerjoin(District, District.affiliation_id == Affiliation.id)
+        .outerjoin(School, or_(School.district_id == District.id, School.affiliation_id == Affiliation.id))
+        .outerjoin(Student, Student.school_id == School.id)
+        .group_by(Affiliation.id, Affiliation.name, Affiliation.abbreviation)
+        .order_by(Affiliation.name)
+    )
+    return [
+        {"id": r.id, "name": r.name, "abbreviation": r.abbreviation, "student_count": r.student_count}
+        for r in rows.all()
+    ]
 
 @router.post("/affiliations")
 async def create_affiliation(
@@ -36,11 +62,11 @@ async def create_affiliation(
     current_user = Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
-    aff = Affiliation(name=body.name.strip())
+    aff = Affiliation(name=body.name.strip(), abbreviation=body.abbreviation or None)
     db.add(aff)
     await db.commit()
     await db.refresh(aff)
-    return {"id": aff.id, "name": aff.name}
+    return {"id": aff.id, "name": aff.name, "abbreviation": aff.abbreviation}
 
 @router.put("/affiliations/{aff_id}")
 async def update_affiliation(
@@ -54,8 +80,9 @@ async def update_affiliation(
     if not aff:
         raise HTTPException(404, "ไม่พบสังกัด")
     aff.name = body.name.strip()
+    aff.abbreviation = body.abbreviation or None
     await db.commit()
-    return {"id": aff.id, "name": aff.name}
+    return {"id": aff.id, "name": aff.name, "abbreviation": aff.abbreviation}
 
 @router.delete("/affiliations/{aff_id}")
 async def delete_affiliation(
@@ -247,12 +274,19 @@ async def get_schools_stats(
     )
     stats_map = {row.school_id: row for row in stats_result}
 
-    # Fetch district and affiliation names
+    # Fetch district and affiliation names + abbreviations
     dist_result = await db.execute(
-        select(District, Affiliation.name.label("aff_name"))
+        select(District, Affiliation.name.label("aff_name"), Affiliation.abbreviation.label("aff_abbr"))
         .join(Affiliation, District.affiliation_id == Affiliation.id)
     )
-    dist_map = {row.District.id: {"district_name": row.District.name, "affiliation_name": row.aff_name} for row in dist_result}
+    dist_map = {
+        row.District.id: {
+            "district_name": row.District.name,
+            "affiliation_name": row.aff_name,
+            "affiliation_abbr": row.aff_abbr,
+        }
+        for row in dist_result
+    }
 
     return [
         {
@@ -261,6 +295,7 @@ async def get_schools_stats(
             "district_id": s.district_id,
             "district_name": dist_map.get(s.district_id, {}).get("district_name", ""),
             "affiliation_name": dist_map.get(s.district_id, {}).get("affiliation_name", ""),
+            "affiliation_abbr": dist_map.get(s.district_id, {}).get("affiliation_abbr"),
             "school_type": s.school_type,
             "student_count": stats_map[s.id].student_count if s.id in stats_map else 0,
             "last_import_at": stats_map[s.id].last_import_at.isoformat() if s.id in stats_map and stats_map[s.id].last_import_at else None,
@@ -490,6 +525,60 @@ async def truncate_students_by_school(
 
     return {
         "school_name": school.name,
+        "deleted_students": stu_del.rowcount,
+        "deleted_users": user_del.rowcount,
+    }
+
+@router.delete("/students/by-affiliation/{affiliation_id}")
+async def truncate_students_by_affiliation(
+    affiliation_id: int,
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ลบนักเรียนทั้งหมดของสังกัด (ทุกโรงเรียนในสังกัด) — ใช้กรณี import ผิดทั้งสังกัด"""
+    aff_result = await db.execute(select(Affiliation).where(Affiliation.id == affiliation_id))
+    aff = aff_result.scalar_one_or_none()
+    if not aff:
+        raise HTTPException(404, f"ไม่พบสังกัด ID={affiliation_id}")
+
+    school_result = await db.execute(
+        select(School.id).outerjoin(District, School.district_id == District.id).where(
+            or_(District.affiliation_id == affiliation_id, School.affiliation_id == affiliation_id)
+        )
+    )
+    school_ids = [row[0] for row in school_result.fetchall()]
+
+    if not school_ids:
+        return {"affiliation_name": aff.name, "deleted_students": 0, "deleted_users": 0}
+
+    stu_result = await db.execute(select(Student.id).where(Student.school_id.in_(school_ids)))
+    student_ids = [row[0] for row in stu_result.fetchall()]
+
+    if not student_ids:
+        return {"affiliation_name": aff.name, "deleted_students": 0, "deleted_users": 0}
+
+    asmnt_result = await db.execute(
+        select(Assessment.id).where(Assessment.student_id.in_(student_ids))
+    )
+    assessment_ids = [row[0] for row in asmnt_result.fetchall()]
+
+    user_ids_result = await db.execute(
+        select(User.id).where(User.student_id.in_(student_ids))
+    )
+    user_ids = [row[0] for row in user_ids_result.fetchall()]
+    if user_ids:
+        await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
+
+    if assessment_ids:
+        await db.execute(delete(Alert).where(Alert.assessment_id.in_(assessment_ids)))
+    await db.execute(delete(Alert).where(Alert.student_id.in_(student_ids)))
+    await db.execute(delete(Assessment).where(Assessment.student_id.in_(student_ids)))
+    user_del = await db.execute(delete(User).where(User.student_id.in_(student_ids)))
+    stu_del  = await db.execute(delete(Student).where(Student.school_id.in_(school_ids)))
+    await db.commit()
+
+    return {
+        "affiliation_name": aff.name,
         "deleted_students": stu_del.rowcount,
         "deleted_users": user_del.rowcount,
     }

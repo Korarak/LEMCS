@@ -17,6 +17,7 @@ import MoMDeltaChart       from "@/components/admin/MoMDeltaChart";
 import FilterBar, { type DashboardFilters } from "@/components/admin/FilterBar";
 import OrgCompareChart from "@/components/admin/OrgCompareChart";
 import SurveyRoundBanner from "@/components/admin/SurveyRoundBanner";
+import AffiliationStudentStats from "@/components/admin/AffiliationStudentStats";
 import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
@@ -250,6 +251,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <InsightPanel summaryData={summaryData} trendData={trendData} totalRegistered={totalRegistered} />
+        <AffiliationStudentStats />
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════

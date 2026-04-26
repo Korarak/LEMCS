@@ -14,6 +14,7 @@ class Affiliation(Base):
     __tablename__ = "affiliations"
     id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False)
+    abbreviation = Column(Text, nullable=True)
 
 class District(Base):
     __tablename__ = "districts"

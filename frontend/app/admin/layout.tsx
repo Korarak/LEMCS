@@ -70,7 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Mobile Navbar */}
         <div className="navbar bg-base-100 shadow-sm lg:hidden">
           <label htmlFor="admin-drawer" className="btn btn-ghost drawer-button">☰</label>
-          <span className="font-bold text-primary">🧠 LEMCS Admin</span>
+          <span className="font-bold text-primary">💙 LEMCS Admin</span>
         </div>
 
         {/* Page content */}
@@ -85,7 +85,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <aside className="min-h-screen w-64 bg-base-100 flex flex-col border-r border-base-200">
           {/* Logo */}
           <div className="p-5 border-b border-base-200">
-            <p className="font-bold text-primary text-xl tracking-tight">🧠 LEMCS</p>
+            <p className="font-bold text-primary text-xl tracking-tight">💙 LEMCS</p>
             <p className="text-xs text-base-content/70 mt-0.5 font-medium">Loei Educational MindCare System</p>
             <p className="text-xs text-base-content/40 mt-0.5 leading-tight">ระบบคัดกรองสุขภาพจิตนักเรียน<br/>จังหวัดเลย</p>
           </div>
