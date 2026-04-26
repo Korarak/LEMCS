@@ -44,6 +44,11 @@ async def lifespan(app: FastAPI):
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS grade_snapshot TEXT",
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS classroom_snapshot TEXT",
         "ALTER TABLE survey_rounds ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
+        "ALTER TABLE affiliations ADD COLUMN IF NOT EXISTS abbreviation TEXT",
+        "UPDATE affiliations SET abbreviation = 'สอศ.' WHERE name ILIKE '%อาชีวศึกษา%' AND abbreviation IS NULL",
+        "UPDATE affiliations SET abbreviation = 'สพฐ.' WHERE name ILIKE '%การศึกษาขั้นพื้นฐาน%' AND abbreviation IS NULL",
+        "UPDATE affiliations SET abbreviation = 'สช.'  WHERE name ILIKE '%เอกชน%' AND abbreviation IS NULL",
+        "UPDATE affiliations SET abbreviation = 'สกร.' WHERE name ILIKE '%ส่งเสริมการเรียนรู้%' AND abbreviation IS NULL",
         "ALTER TABLE schools ADD COLUMN IF NOT EXISTS affiliation_id INTEGER REFERENCES affiliations(id)",
         # backfill: โรงเรียน สกร. ที่สร้างก่อนมี affiliation_id → ตั้งค่าจาก affiliations
         """UPDATE schools SET affiliation_id = (

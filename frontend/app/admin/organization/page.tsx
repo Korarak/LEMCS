@@ -8,7 +8,7 @@ import RoleGuard from "@/components/admin/RoleGuard";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
-interface Affiliation { id: number; name: string; }
+interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 interface District    { id: number; name: string; affiliation_id: number; }
 
 // ── Affiliation Section ───────────────────────────────────────────────────────
@@ -19,20 +19,22 @@ function AffiliationSection({
   const [modal,   setModal]   = useState<"add" | "edit" | null>(null);
   const [target,  setTarget]  = useState<Affiliation | null>(null);
   const [name,    setName]    = useState("");
+  const [abbr,    setAbbr]    = useState("");
   const [saving,  setSaving]  = useState(false);
   const [confirm, setConfirm] = useState<Affiliation | null>(null);
 
-  const openAdd  = () => { setTarget(null); setName(""); setModal("add"); };
-  const openEdit = (a: Affiliation) => { setTarget(a); setName(a.name); setModal("edit"); };
+  const openAdd  = () => { setTarget(null); setName(""); setAbbr(""); setModal("add"); };
+  const openEdit = (a: Affiliation) => { setTarget(a); setName(a.name); setAbbr(a.abbreviation || ""); setModal("edit"); };
 
   const handleSave = async () => {
     if (!name.trim()) { toast("กรุณากรอกชื่อสังกัด", "warning"); return; }
     setSaving(true);
+    const body = { name: name.trim(), abbreviation: abbr.trim() || null };
     try {
       if (modal === "add") {
-        await api.post("/admin/affiliations", { name });
+        await api.post("/admin/affiliations", body);
       } else if (target) {
-        await api.put(`/admin/affiliations/${target.id}`, { name });
+        await api.put(`/admin/affiliations/${target.id}`, body);
       }
       setModal(null);
       globalMutate("/admin/affiliations");
@@ -77,6 +79,9 @@ function AffiliationSection({
               <div key={a.id} className="flex items-center justify-between py-2.5 group">
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono text-base-content/30 w-6 text-right">{i + 1}</span>
+                  {a.abbreviation && (
+                    <span className="badge badge-sm badge-outline font-semibold text-xs shrink-0">{a.abbreviation}</span>
+                  )}
                   <p className="text-sm font-medium">{a.name}</p>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -94,16 +99,31 @@ function AffiliationSection({
         <dialog className="modal modal-open">
           <div className="modal-box max-w-sm">
             <h3 className="font-bold text-lg mb-4">{modal === "add" ? "เพิ่มสังกัดใหม่" : "แก้ไขสังกัด"}</h3>
-            <div className="form-control">
-              <label className="label"><span className="label-text">ชื่อสังกัด *</span></label>
-              <input
-                className="input input-bordered w-full"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="เช่น สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน"
-                autoFocus
-                onKeyDown={e => e.key === "Enter" && handleSave()}
-              />
+            <div className="space-y-3">
+              <div className="form-control">
+                <label className="label"><span className="label-text">ชื่อสังกัด *</span></label>
+                <input
+                  className="input input-bordered w-full"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="เช่น สำนักงานคณะกรรมการการศึกษาขั้นพื้นฐาน"
+                  autoFocus
+                />
+              </div>
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">ชื่อย่อ</span>
+                  <span className="label-text-alt text-base-content/40">เช่น สพฐ., สอศ., สกร.</span>
+                </label>
+                <input
+                  className="input input-bordered w-full"
+                  value={abbr}
+                  onChange={e => setAbbr(e.target.value)}
+                  placeholder="เช่น สพฐ."
+                  maxLength={20}
+                  onKeyDown={e => e.key === "Enter" && handleSave()}
+                />
+              </div>
             </div>
             <div className="modal-action">
               <button className="btn btn-ghost btn-sm" onClick={() => setModal(null)}>ยกเลิก</button>

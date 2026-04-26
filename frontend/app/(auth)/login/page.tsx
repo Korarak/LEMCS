@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import CommitteeContent from "@/components/committee/CommitteeContent";
+import ConsentModal from "@/components/ConsentModal";
 
 const MONTHS = [
   { value: "01", label: "มกราคม" },
@@ -192,18 +193,41 @@ function SubmitButton({ loading, ready, label, accent }: {
 }
 
 function PdpaNote() {
+  const [showPolicy, setShowPolicy] = useState(false);
   return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-      marginTop: 18, fontSize: 10.5, color: C.subtle,
-    }}>
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-          stroke="currentColor"
-          d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-      </svg>
-      ข้อมูลถูกเข้ารหัสและปกป้องตามมาตรฐาน PDPA
-    </div>
+    <>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+        marginTop: 18, fontSize: 10.5, color: C.subtle, flexWrap: "wrap",
+        textAlign: "center", lineHeight: 1.6,
+      }}>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+            stroke="currentColor"
+            d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span>ข้อมูลถูกเข้ารหัส AES-256 ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 ·</span>
+        <button
+          type="button"
+          onClick={() => setShowPolicy(true)}
+          style={{
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: C.indigo, fontSize: 10.5, fontFamily: "inherit",
+            textDecoration: "underline", textDecorationStyle: "dotted",
+          }}
+        >
+          อ่านนโยบายความเป็นส่วนตัว
+        </button>
+      </div>
+      {showPolicy && (
+        <ConsentModal
+          readOnly
+          onClose={() => setShowPolicy(false)}
+          onAccept={() => setShowPolicy(false)}
+          onDecline={() => setShowPolicy(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -370,17 +394,7 @@ function AffiliateSelection({ onSelect }: { onSelect: (a: Affiliate) => void }) 
         ))}
       </div>
 
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-        marginTop: 22, fontSize: 10.5, color: C.subtle,
-      }}>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-            stroke="currentColor"
-            d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        ข้อมูลถูกเข้ารหัสและปกป้องตามมาตรฐาน PDPA
-      </div>
+      <PdpaNote />
     </div>
   );
 }

@@ -502,15 +502,15 @@ function UsersPageInner() {
 
       {/* ── Table ── */}
       <div className="card bg-base-100 shadow overflow-x-auto">
-        <table className="table table-zebra w-full text-sm">
+        <table className="table table-zebra table-sm w-full text-sm">
           <thead>
             <tr className="bg-base-200/50 text-base-content/70">
-              <th>Username</th>
-              <th>Role</th>
-              <th>สังกัดองค์กร</th>
-              <th>เข้าใช้งานล่าสุด</th>
-              <th>สถานะ</th>
-              <th className="text-center w-32">จัดการ</th>
+              <th className="w-36 whitespace-nowrap">Username</th>
+              <th className="w-36 whitespace-nowrap">Role</th>
+              <th className="min-w-[160px]">สังกัดองค์กร</th>
+              <th className="w-28 whitespace-nowrap">เข้าใช้งานล่าสุด</th>
+              <th className="w-16 whitespace-nowrap">สถานะ</th>
+              <th className="text-center w-28 whitespace-nowrap">จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -531,18 +531,18 @@ function UsersPageInner() {
               const ll  = lastLoginLabel(u);
               return (
                 <tr key={u.id} className={`hover transition-opacity ${!u.is_active ? "opacity-40" : ""}`}>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <span className="font-mono font-semibold tracking-tight">{u.username}</span>
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <span className={`badge badge-sm ${ROLE_BADGE[u.role] || "badge-ghost"}`}>
                       {ROLE_LABELS[u.role] || u.role}
                     </span>
                   </td>
-                  <td>
-                    <span className="flex items-center gap-1.5 text-sm text-base-content/80">
-                      <span>{org.icon}</span>
-                      <span>{org.label}</span>
+                  <td className="max-w-[220px]">
+                    <span className="flex items-center gap-1.5 text-xs text-base-content/80">
+                      <span className="shrink-0">{org.icon}</span>
+                      <span className="truncate" title={org.label}>{org.label}</span>
                     </span>
                   </td>
                   <td className="text-xs text-base-content/60 whitespace-nowrap">
@@ -551,34 +551,19 @@ function UsersPageInner() {
                       : <span className="italic text-base-content/30">ยังไม่เคย</span>
                     }
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <span className={`badge badge-xs ${u.is_active ? "badge-success" : "badge-error"}`}>
                       {u.is_active ? "ใช้งาน" : "ปิด"}
                     </span>
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
                     <div className="flex gap-1 justify-center">
-                      {/* Edit */}
                       <div className="tooltip" data-tip="แก้ไขสิทธิ์">
-                        <button
-                          className="btn btn-ghost btn-xs"
-                          onClick={() => openEdit(u)}
-                        >
-                          ✏️
-                        </button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => openEdit(u)}>✏️</button>
                       </div>
-
-                      {/* Reset password */}
                       <div className="tooltip" data-tip="รีเซ็ตรหัสผ่าน">
-                        <button
-                          className="btn btn-ghost btn-xs"
-                          onClick={() => openReset(u)}
-                        >
-                          🔑
-                        </button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => openReset(u)}>🔑</button>
                       </div>
-
-                      {/* Toggle active — sensitive action → confirm modal */}
                       <div className="tooltip" data-tip={u.is_active ? "ปิดบัญชี" : "เปิดบัญชี"}>
                         <button
                           className={`btn btn-ghost btn-xs ${u.is_active ? "text-error hover:bg-error/10" : "text-success hover:bg-success/10"}`}

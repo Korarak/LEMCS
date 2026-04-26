@@ -70,11 +70,6 @@ export default function AdminLoginPage() {
     setTimeout(() => setShaking(false), 620);
   };
 
-  // ผู้ใช้ทดสอบสำหรับ dev (ลบออกก่อนขึ้น production)
-  const DEV_ACCOUNTS = [
-    { label: "⚙️ System Admin", username: "admin",        password: "password123", color: "#f59e0b" },
-  ];
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ready) return;
@@ -377,48 +372,6 @@ export default function AdminLoginPage() {
               ข้อมูลถูกเข้ารหัสและปกป้องตามมาตรฐาน PDPA
             </div>
 
-            {/* ── Dev Quick Fill (ลบออกก่อนขึ้น prod) ── */}
-            <div style={{
-              marginTop: 20,
-              padding: "12px 14px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #fefce8, #fef9c3)",
-              border: "1.5px dashed #fbbf24",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                <span style={{ fontSize: 12 }}>🛠️</span>
-                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#92400e", letterSpacing: "0.3px" }}>
-                  DEV — คลิกเพื่อเติม username/password
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {DEV_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.username}
-                    type="button"
-                    onClick={() => { setUsername(acc.username); setPassword(acc.password); setError(""); }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "8px 12px", borderRadius: 8, border: "none",
-                      cursor: "pointer",
-                      background: `${acc.color}15`,
-                      transition: "background .15s, transform .15s",
-                      fontFamily: "inherit",
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${acc.color}28`; e.currentTarget.style.transform = "translateX(2px)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = `${acc.color}15`; e.currentTarget.style.transform = "none"; }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: acc.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1e293b" }}>{acc.label}</span>
-                    </div>
-                    <span style={{ fontSize: "0.68rem", color: "#64748b", fontFamily: "monospace" }}>
-                      {acc.username} / {acc.password}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           {/* Back to student login */}

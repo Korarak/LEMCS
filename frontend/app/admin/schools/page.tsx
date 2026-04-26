@@ -14,6 +14,7 @@ interface SchoolStats {
   district_id: number;
   district_name: string;
   affiliation_name: string;
+  affiliation_abbr?: string | null;
   school_type: string | null;
   student_count: number;
   last_import_at: string | null;
@@ -21,7 +22,7 @@ interface SchoolStats {
 
 interface School    { id: number; name: string; district_id: number; school_type: string | null; }
 interface District  { id: number; name: string; affiliation_id: number; }
-interface Affiliation { id: number; name: string; }
+interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
 const SCHOOL_TYPES = ["ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา", "เอกชน", "สกร.", "กศน."];
 const TYPE_BADGE: Record<string, string> = {
@@ -258,7 +259,7 @@ export default function SchoolsPage() {
         return `<tr>
           <td>${i + 1}</td>
           <td>${s.name}</td>
-          <td>${s.affiliation_name || "—"}</td>
+          <td>${s.affiliation_abbr || s.affiliation_name || "—"}</td>
           <td>${s.district_name || "—"}</td>
           <td>${s.school_type || "—"}</td>
           <td style="text-align:right"><span class="count">${s.student_count.toLocaleString()}</span></td>
@@ -287,7 +288,7 @@ export default function SchoolsPage() {
     const body = rows.map((s, i) => {
       const status = s.student_count === 0 ? "ยังไม่มีข้อมูล"
         : (s.last_import_at && (Date.now() - new Date(s.last_import_at).getTime()) < 30 * 24 * 3600 * 1000) ? "ล่าสุด" : "นานแล้ว";
-      return [i + 1, s.name, s.affiliation_name, s.district_name, s.school_type || "", s.student_count, formatDate(s.last_import_at), status];
+      return [i + 1, s.name, s.affiliation_abbr || s.affiliation_name, s.district_name, s.school_type || "", s.student_count, formatDate(s.last_import_at), status];
     });
     const csv = [header, ...body].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -380,7 +381,9 @@ export default function SchoolsPage() {
             >
               <option value="">ทุกสังกัด</option>
               {affiliations.map(a => (
-                <option key={a.id} value={String(a.id)}>{a.name}</option>
+                <option key={a.id} value={String(a.id)}>
+                  {a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}
+                </option>
               ))}
             </select>
 
@@ -432,18 +435,18 @@ export default function SchoolsPage() {
 
       {/* Table */}
       <div className="card bg-base-100 shadow overflow-x-auto">
-        <table className="table table-zebra w-full text-sm">
+        <table className="table table-zebra table-sm w-full text-sm">
           <thead>
             <tr className="bg-base-200/50">
-              <th className="w-10 text-center">#</th>
-              <th>ชื่อสถานศึกษา</th>
-              <th>สังกัด</th>
-              <th>เขตพื้นที่</th>
-              <th>ประเภท</th>
-              <th className="text-right">นักเรียน</th>
-              <th>Import ล่าสุด</th>
-              <th>สถานะ</th>
-              <th className="w-20 text-center">จัดการ</th>
+              <th className="w-8 text-center">#</th>
+              <th className="min-w-[180px]">ชื่อสถานศึกษา</th>
+              <th className="w-16 whitespace-nowrap">สังกัด</th>
+              <th className="min-w-[140px]">เขตพื้นที่</th>
+              <th className="w-24 whitespace-nowrap">ประเภท</th>
+              <th className="w-20 text-right whitespace-nowrap">นักเรียน</th>
+              <th className="w-24 whitespace-nowrap">Import ล่าสุด</th>
+              <th className="w-20 whitespace-nowrap">สถานะ</th>
+              <th className="w-16 text-center">จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -459,10 +462,25 @@ export default function SchoolsPage() {
             ) : filteredSchools.map((s, i) => (
               <tr key={s.id} className="hover">
                 <td className="text-center font-mono text-xs text-base-content/30">{i + 1}</td>
-                <td className="font-medium">{s.name}</td>
-                <td className="text-xs text-base-content/60">{s.affiliation_name || "—"}</td>
-                <td className="text-sm text-base-content/70">{s.district_name || districtMap.get(s.district_id) || "—"}</td>
-                <td>
+                <td className="font-medium max-w-[240px]">
+                  <span className="block truncate" title={s.name}>{s.name}</span>
+                </td>
+                <td className="whitespace-nowrap">
+                  {s.affiliation_abbr ? (
+                    <span className="badge badge-sm badge-outline font-semibold" title={s.affiliation_name}>
+                      {s.affiliation_abbr}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-base-content/50">{s.affiliation_name || "—"}</span>
+                  )}
+                </td>
+                <td className="max-w-[180px]">
+                  <span className="block truncate text-xs text-base-content/70"
+                    title={s.district_name || districtMap.get(s.district_id) || ""}>
+                    {s.district_name || districtMap.get(s.district_id) || "—"}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap">
                   {s.school_type ? (
                     <span className={`badge badge-sm ${TYPE_BADGE[s.school_type] || "badge-ghost"}`}>
                       {s.school_type}
@@ -471,19 +489,19 @@ export default function SchoolsPage() {
                     <span className="text-base-content/30">—</span>
                   )}
                 </td>
-                <td className="text-right">
+                <td className="text-right whitespace-nowrap">
                   <span className={`font-bold tabular-nums ${s.student_count > 0 ? "text-primary" : "text-base-content/30"}`}>
                     {s.student_count.toLocaleString()}
                   </span>
-                  <span className="text-base-content/40 text-xs ml-0.5"> คน</span>
+                  <span className="text-base-content/40 text-xs ml-0.5">คน</span>
                 </td>
                 <td className="text-xs text-base-content/60 whitespace-nowrap">
                   {formatDate(s.last_import_at)}
                 </td>
-                <td>
+                <td className="whitespace-nowrap">
                   <ImportStatusBadge count={s.student_count} lastImport={s.last_import_at} />
                 </td>
-                <td className="text-center">
+                <td className="text-center whitespace-nowrap">
                   <div className="flex gap-1 justify-center">
                     <button className="btn btn-ghost btn-xs" onClick={() => openEdit(s)} title="แก้ไข">✏️</button>
                     <button className="btn btn-ghost btn-xs text-error" onClick={() => setDeleteTarget(s)} title="ลบ">🗑️</button>
@@ -496,7 +514,7 @@ export default function SchoolsPage() {
             <tfoot>
               <tr className="bg-base-200/30 text-sm font-semibold">
                 <td colSpan={5} className="text-right pr-3 text-base-content/60">รวม</td>
-                <td className="text-right text-primary tabular-nums">{totalStudents.toLocaleString()} คน</td>
+                <td className="text-right text-primary tabular-nums whitespace-nowrap">{totalStudents.toLocaleString()} คน</td>
                 <td colSpan={3} />
               </tr>
             </tfoot>

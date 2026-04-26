@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import PendingAssessments from "@/components/dashboard/PendingAssessments";
 import AssessmentHistory from "@/components/dashboard/AssessmentHistory";
 import WellnessScore from "@/components/dashboard/WellnessScore";
+import ConsentModal from "@/components/ConsentModal";
+
+const CONSENT_KEY = "lemcs_pdpa_consent_v1";
 
 const C = {
   indigo: "#4f46e5",
@@ -37,6 +40,7 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeRound, setActiveRound] = useState<{ label: string; academic_year: string; term: number } | null | undefined>(undefined);
+  const [showConsent, setShowConsent] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("lemcs_token");
@@ -45,8 +49,21 @@ export default function DashboardPage() {
     } else {
       setToken(storedToken);
       fetchDashboardData(storedToken);
+      if (!localStorage.getItem(CONSENT_KEY)) {
+        setShowConsent(true);
+      }
     }
   }, [router]);
+
+  const handleConsentAccept = () => {
+    localStorage.setItem(CONSENT_KEY, new Date().toISOString());
+    setShowConsent(false);
+  };
+
+  const handleConsentDecline = () => {
+    localStorage.removeItem("lemcs_token");
+    router.push("/login");
+  };
 
   const fetchDashboardData = async (authToken: string) => {
     try {
@@ -79,6 +96,13 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
+    {showConsent && (
+      <ConsentModal
+        onAccept={handleConsentAccept}
+        onDecline={handleConsentDecline}
+      />
+    )}
     <div className="fade-in-up" style={{ padding: "24px 16px 80px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
 
@@ -176,5 +200,6 @@ export default function DashboardPage() {
 
       </div>
     </div>
+    </>
   );
 }
