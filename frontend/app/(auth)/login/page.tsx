@@ -318,7 +318,7 @@ function AffiliateSelection({ onSelect }: { onSelect: (a: Affiliate) => void }) 
       icon: <BookOpenIcon size={28} color={C.amber} />,
       title: "สกร.",
       sub: "สำนักงานส่งเสริมการเรียนรู้",
-      tags: ["กศน.", "สกร.เลย"],
+      tags: ["สกร.เลย"],
       accent: C.amber,
       accentBg: "rgba(217,119,6,0.07)",
     },

@@ -235,7 +235,7 @@ async def main():
                     grade = random.choice(GRADES_PRIMARY)
                 elif stype == "มัธยมศึกษา":
                     grade = random.choice(GRADES_SECONDARY)
-                elif stype in ("กศน.", "สกร."):
+                elif stype == "สกร.":
                     grade = random.choice(GRADES_SKR)
                 else:
                     age_now = TODAY.year - bdate.year

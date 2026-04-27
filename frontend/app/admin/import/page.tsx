@@ -20,6 +20,7 @@ interface SmartPreviewResult {
   column_mapping: Record<string, ColInfo | null>;
   preview_raw: string[][];
   preview_mapped: Record<string, string>[];
+  detected_school_name?: string;
 }
 
 interface ImportResult {
@@ -56,6 +57,40 @@ const FIELD_LABELS: Record<string, { label: string; icon: string; required?: boo
   school_code:  { label: "รหัสโรงเรียน (ข้อมูลเท่านั้น)", icon: "🏢" },
   status:       { label: "สถานะนักเรียน", icon: "📋" },
 };
+
+// ─── Fuzzy suggest ────────────────────────────────────────────────────────────
+
+function fuzzyScore(query: string, candidate: string): number {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/\s+/g, "").replace(/^โรงเรียน/, "");
+  const q = norm(query);
+  const c = norm(candidate);
+  if (!q || !c) return 0;
+  if (q === c) return 100;
+  if (c.includes(q)) return Math.round(80 * q.length / c.length);
+  if (q.includes(c)) return Math.round(80 * c.length / q.length);
+  const bgSet = (s: string) => {
+    const set = new Set<string>();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    return set;
+  };
+  const bq = bgSet(q);
+  const bc = bgSet(c);
+  let common = 0;
+  bq.forEach(b => { if (bc.has(b)) common++; });
+  const total = bq.size + bc.size;
+  return total === 0 ? 0 : Math.round(100 * 2 * common / total);
+}
+
+function topSuggest(query: string, candidates: School[], n = 5): School[] {
+  if (!query.trim()) return [];
+  return candidates
+    .map(s => ({ school: s, score: fuzzyScore(query, s.name) }))
+    .filter(x => x.score > 20)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map(x => x.school);
+}
 
 // ─── Step Indicator ───────────────────────────────────────────────────────────
 
@@ -101,7 +136,7 @@ export default function SmartImportPage() {
   const [preview, setPreview] = useState<SmartPreviewResult | null>(null);
   
   // School filter state
-  const [affiliations, setAffiliations] = useState<{id: number; name: string}[]>([]);
+  const [affiliations, setAffiliations] = useState<{id: number; name: string; abbreviation?: string | null}[]>([]);
   const [districts, setDistricts] = useState<{id: number; name: string; affiliation_id: number}[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [selectedAffId, setSelectedAffId] = useState<number | "">("");
@@ -170,7 +205,13 @@ export default function SmartImportPage() {
     return districts.filter(d => d.affiliation_id === selectedAffId);
   }, [districts, selectedAffId]);
 
-  const filteredSchools = useMemo(() => {
+  const schoolSuggestions = useMemo(
+    () => !selectedSchoolId && detectedSchoolName ? topSuggest(detectedSchoolName, schools, 5) : [],
+    [detectedSchoolName, selectedSchoolId, schools],
+  );
+
+  // รายชื่อโรงเรียนที่กรองตามสังกัด/เขต (ยังไม่กรองตามข้อความค้นหา)
+  const filteredByAffDist = useMemo(() => {
     let list = schools;
     if (selectedDistId) {
       list = list.filter(s => s.district_id === selectedDistId);
@@ -181,12 +222,17 @@ export default function SmartImportPage() {
         s.affiliation_id === selectedAffId
       );
     }
-    if (schoolSearch.trim()) {
-      const q = schoolSearch.trim().toLowerCase();
-      list = list.filter(s => s.name.toLowerCase().includes(q));
-    }
     return list;
-  }, [schools, districts, selectedAffId, selectedDistId, schoolSearch]);
+  }, [schools, districts, selectedAffId, selectedDistId]);
+
+  // สำหรับตัวเลขแสดงใน placeholder เท่านั้น
+  const filteredSchools = filteredByAffDist;
+
+  // typeahead: ใช้ fuzzy (topSuggest) — ครอบคลุมกรณี วิทยาลัย / ชื่อ partial / spacing ต่างกัน
+  const typeaheadResults = useMemo(() => {
+    if (!schoolSearch.trim()) return [];
+    return topSuggest(schoolSearch, filteredByAffDist, 8);
+  }, [schoolSearch, filteredByAffDist]);
 
   // ─── Step 1: อัปโหลด ────────────────────────────────────────────────────────
 
@@ -214,8 +260,12 @@ export default function SmartImportPage() {
       }
       setEditMapping(init);
 
-      // Auto-detect school name จากไฟล์
-      const rawSchoolName = data.preview_mapped[0]?.school_name?.trim() ?? "";
+      // Auto-detect school name: ใช้ title-row detection ก่อน (วิทยาลัย/โรงเรียนใน row ก่อน header)
+      // ถ้าไม่มี fallback ไปที่ column school_name ในข้อมูล
+      const rawSchoolName =
+        data.detected_school_name?.trim() ||
+        data.preview_mapped[0]?.school_name?.trim() ||
+        "";
       setDetectedSchoolName(rawSchoolName);
       if (rawSchoolName) {
         const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
@@ -224,9 +274,11 @@ export default function SmartImportPage() {
           || norm(rawSchoolName).includes(norm(s.name)));
         if (match) {
           setSelectedSchoolId(match.id);
+          setSchoolSearch("");
           toast(`พบโรงเรียน "${match.name}" — เลือกอัตโนมัติแล้ว`, "success");
         } else {
           setSelectedSchoolId("");
+          setSchoolSearch(rawSchoolName);
         }
       }
       setStep(2);
@@ -458,6 +510,30 @@ export default function SmartImportPage() {
                 )}
               </div>
 
+              {/* Fuzzy suggestions — แสดงเมื่อตรวจพบชื่อโรงเรียนแต่ยังไม่ได้เลือก */}
+              {detectedSchoolName && !selectedSchoolId && schoolSuggestions.length > 0 && (
+                <div>
+                  <p className="text-xs text-base-content/50 mb-1.5">
+                    💡 โรงเรียนที่ใกล้เคียงในระบบ — คลิกเพื่อเลือกทันที:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {schoolSuggestions.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className="btn btn-outline btn-xs hover:btn-primary"
+                        onClick={() => setSelectedSchoolId(s.id)}
+                      >
+                        {s.name}
+                        {s.school_type && (
+                          <span className="opacity-50 ml-1">({s.school_type})</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* กรณีที่ตรวจพบชื่อโรงเรียนในไฟล์ แต่ไม่พบในระบบ */}
               {detectedSchoolName && !selectedSchoolId && (() => {
                 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
@@ -475,7 +551,7 @@ export default function SmartImportPage() {
                           value={createSchoolAffId}
                           onChange={e => { setCreateSchoolAffId(Number(e.target.value) || ""); setCreateSchoolDistId(""); }}>
                           <option value="">— เลือกสังกัด —</option>
-                          {affiliations.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          {affiliations.map(a => <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>)}
                         </select>
                         <select className="select select-bordered select-xs"
                           value={createSchoolDistId}
@@ -488,7 +564,7 @@ export default function SmartImportPage() {
                           value={createSchoolType}
                           onChange={e => setCreateSchoolType(e.target.value)}>
                           <option value="">— ประเภทสถานศึกษา —</option>
-                          {["ประถมศึกษา","มัธยมศึกษา","อาชีวศึกษา","เอกชน","สกร.","กศน."].map(t => (
+                          {["ประถมศึกษา","มัธยมศึกษา","อาชีวศึกษา","เอกชน","สกร."].map(t => (
                             <option key={t} value={t}>{t}</option>
                           ))}
                         </select>
@@ -504,41 +580,70 @@ export default function SmartImportPage() {
                 );
               })()}
 
-              {/* Manual selector + filter */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Filter by affiliation / district */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select className="select select-bordered select-sm w-full"
                   value={selectedAffId}
-                  onChange={(e) => { setSelectedAffId(Number(e.target.value) || ""); setSelectedDistId(""); setSelectedSchoolId(""); }}>
+                  onChange={(e) => { setSelectedAffId(Number(e.target.value) || ""); setSelectedDistId(""); setSelectedSchoolId(""); setSchoolSearch(""); }}>
                   <option value="">— ทุกสังกัด —</option>
-                  {affiliations.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {affiliations.map(a => <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>)}
                 </select>
                 <select className="select select-bordered select-sm w-full"
                   value={selectedDistId}
-                  onChange={(e) => { setSelectedDistId(Number(e.target.value) || ""); setSelectedSchoolId(""); }}
+                  onChange={(e) => { setSelectedDistId(Number(e.target.value) || ""); setSelectedSchoolId(""); setSchoolSearch(""); }}
                   disabled={availableDistricts.length === 0}>
                   <option value="">— ทุกเขตพื้นที่ —</option>
                   {availableDistricts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-                <input type="text" placeholder="🔍 พิมพ์ชื่อโรงเรียน..."
-                  className="input input-bordered input-sm w-full"
-                  value={schoolSearch}
-                  onChange={(e) => { setSchoolSearch(e.target.value); setSelectedSchoolId(""); }}/>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                <select
-                  className={`select select-bordered select-sm flex-1 ${!selectedSchoolId ? "select-warning border-warning/50 bg-warning/5" : "select-success border-success/50 bg-success/5"}`}
-                  value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(Number(e.target.value) || "")}>
-                  <option value="">— เลือกโรงเรียน ({filteredSchools.length} แห่ง) —</option>
-                  {filteredSchools.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}{s.school_type ? ` (${s.school_type})` : ""}</option>
-                  ))}
-                </select>
-                {selectedSchoolId && (
-                  <span className="text-success text-sm font-medium whitespace-nowrap hidden sm:inline-block">✅ {schools.find(s => s.id === selectedSchoolId)?.name}</span>
-                )}
-              </div>
+              {/* Typeahead school search */}
+              {!selectedSchoolId ? (
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    placeholder={`🔍 พิมพ์ชื่อโรงเรียน... (${filteredSchools.length} แห่ง)`}
+                    className="input input-bordered input-sm w-full"
+                    value={schoolSearch}
+                    onChange={(e) => setSchoolSearch(e.target.value)}
+                  />
+                  {schoolSearch.trim() && typeaheadResults.length > 0 && (
+                    <ul className="absolute z-20 w-full bg-base-100 border border-base-200 rounded-xl shadow-lg mt-1 max-h-52 overflow-y-auto">
+                      {typeaheadResults.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex items-center gap-2 px-3 py-2 hover:bg-primary/10 cursor-pointer text-sm transition-colors"
+                          onMouseDown={(e) => { e.preventDefault(); setSelectedSchoolId(s.id); setSchoolSearch(""); }}
+                        >
+                          <span className="flex-1">{s.name}</span>
+                          {s.school_type && (
+                            <span className="badge badge-xs badge-ghost shrink-0">{s.school_type}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {schoolSearch.trim() && typeaheadResults.length === 0 && (
+                    <div className="absolute z-20 w-full bg-base-100 border border-base-200 rounded-xl shadow-lg mt-1 px-3 py-2.5 text-sm text-base-content/50">
+                      ไม่พบโรงเรียนที่ตรงกับ "{schoolSearch}"
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-success/50 bg-success/5">
+                  <span className="text-success text-sm flex-1 font-medium">
+                    ✅ {schools.find(s => s.id === selectedSchoolId)?.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs text-base-content/50"
+                    onClick={() => { setSelectedSchoolId(""); setSchoolSearch(""); }}
+                  >
+                    เปลี่ยน
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

@@ -24,13 +24,12 @@ interface School    { id: number; name: string; district_id: number; school_type
 interface District  { id: number; name: string; affiliation_id: number; }
 interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
-const SCHOOL_TYPES = ["ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา", "เอกชน", "สกร.", "กศน."];
+const SCHOOL_TYPES = ["ประถมศึกษา", "มัธยมศึกษา", "อาชีวศึกษา", "เอกชน", "สกร."];
 const TYPE_BADGE: Record<string, string> = {
   มัธยมศึกษา: "badge-info",
   ประถมศึกษา: "badge-success",
   อาชีวศึกษา: "badge-warning",
   เอกชน:      "badge-secondary",
-  "กศน.":     "badge-ghost",
 };
 
 function formatDate(iso: string | null): string {
@@ -565,7 +564,7 @@ export default function SchoolsPage() {
                 >
                   <option value="">— เลือกสังกัดก่อน —</option>
                   {affiliations.map(a => (
-                    <option key={a.id} value={String(a.id)}>{a.name}</option>
+                    <option key={a.id} value={String(a.id)}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>
                   ))}
                 </select>
               </div>

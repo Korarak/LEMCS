@@ -85,7 +85,7 @@ function SchoolSelector({
         >
           <option value="">— เลือกสังกัด —</option>
           {affiliations.map((a: any) => (
-            <option key={a.id} value={String(a.id)}>{a.name}</option>
+            <option key={a.id} value={String(a.id)}>{(a as any).abbreviation ? `${(a as any).abbreviation} — ${a.name}` : a.name}</option>
           ))}
         </select>
       </div>
@@ -185,7 +185,7 @@ function DistrictSelector({
         >
           <option value="">— เลือกสังกัด —</option>
           {affiliations.map((a: any) => (
-            <option key={a.id} value={String(a.id)}>{a.name}</option>
+            <option key={a.id} value={String(a.id)}>{(a as any).abbreviation ? `${(a as any).abbreviation} — ${a.name}` : a.name}</option>
           ))}
         </select>
       </div>
@@ -286,7 +286,7 @@ function UsersPageInner() {
   // Lookup helpers
   const schoolMap      = useMemo(() => new Map<number, string>(schools.map((s: any)      => [s.id, s.name as string])),      [schools]);
   const districtMap    = useMemo(() => new Map<number, string>(districts.map((d: any)    => [d.id, d.name as string])),    [districts]);
-  const affiliationMap = useMemo(() => new Map<number, string>(affiliations.map((a: any) => [a.id, a.name as string])), [affiliations]);
+  const affiliationMap = useMemo(() => new Map<number, string>(affiliations.map((a: any) => [a.id, a.abbreviation ? `${a.abbreviation} — ${a.name as string}` : a.name as string])), [affiliations]);
 
   const resolveOrg = (u: AdminUser) => {
     if (u.role === "schooladmin"     && u.school_id)      return { label: schoolMap.get(u.school_id)           || `รร.#${u.school_id}`,       icon: "🏫" };

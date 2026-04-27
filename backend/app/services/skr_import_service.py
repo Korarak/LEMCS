@@ -8,9 +8,8 @@ SKR Import Service: นำเข้าข้อมูลนักศึกษา
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.models.db_models import Student, School, District, User
+from app.models.db_models import Student, School, User
 from app.services.import_service import parse_thai_date
-from app.services.encryption import encrypt_pii, hash_pii
 
 # ─── Prefix/Title lookup ──────────────────────────────────────────
 _PREFIXES_LONGEST_FIRST = [
@@ -181,61 +180,18 @@ def _district_short_name(sheet_name: str) -> str:
     return s
 
 
-async def _find_or_create_skr_school(
-    db: AsyncSession,
-    district_short: str,
-    affiliation_id: int | None,
-) -> School:
-    """
-    หา หรือ สร้าง School "สกร.อำเภอX" ใน district ที่ตรงกัน
-    ถ้าไม่เจอ district ก็สร้าง school โดยไม่มี district_id
-    """
-    school_name = f"สกร.อำเภอ{district_short}"
-
-    r = await db.execute(select(School).where(School.name == school_name))
-    school = r.scalar_one_or_none()
-    if school:
-        if affiliation_id and not school.affiliation_id:
-            school.affiliation_id = affiliation_id
-            await db.flush()
-        return school
-
-    # หา district จาก name fuzzy (scope ด้วย affiliation ถ้ามี)
-    dist_where = [District.name.ilike(f"%{district_short}%")]
-    if affiliation_id:
-        dist_where.append(District.affiliation_id == affiliation_id)
-    dist_q = await db.execute(select(District).where(*dist_where).limit(1))
-    district = dist_q.scalar_one_or_none()
-    # fallback: ถ้าไม่เจอ district ใน affiliation ให้ค้นแบบไม่กรอง
-    if district is None and affiliation_id:
-        dist_q2 = await db.execute(
-            select(District).where(District.name.ilike(f"%{district_short}%")).limit(1)
-        )
-        district = dist_q2.scalar_one_or_none()
-
-    new_school = School(
-        name=school_name,
-        district_id=district.id if district else None,
-        affiliation_id=affiliation_id,
-        school_type="สกร.",
-    )
-    db.add(new_school)
-    await db.flush()
-    return new_school
-
-
 # ─── Public: Bulk import ─────────────────────────────────────────
 
 async def bulk_import_skr_sheets(
     db: AsyncSession,
     content: bytes,
     selected_sheets: list[str],
-    affiliation_id: int | None = None,
+    school_map: dict[str, int],
 ) -> dict:
     """
     Import นักศึกษา สกร. จาก XLS
     - selected_sheets: ชื่อ sheet ที่เลือก (ตรงกับ sheet_name จาก preview)
-    - affiliation_id: ไม่บังคับ ใช้ lookup district เพิ่มเติม
+    - school_map: dict ของ {sheet_name: school_id} — admin ต้องสร้างโรงเรียนไว้ก่อน
     Returns: per-sheet results + summary
     """
     sheets_raw = _read_xls_sheets(content)
@@ -250,7 +206,26 @@ async def bulk_import_skr_sheets(
         district_short = _district_short_name(sheet_name)
         data_rows = _parse_data_rows(sheet["rows"])
 
-        school = await _find_or_create_skr_school(db, district_short, affiliation_id)
+        school_id = school_map.get(sheet_name)
+        if not school_id:
+            results.append({
+                "sheet": sheet_name, "district": district_short, "school": "—",
+                "total_processed": 0, "created": 0, "updated": 0, "skipped": 0,
+                "errors": [{"row": 0, "reason": "ไม่ได้ระบุโรงเรียนปลายทาง"}],
+                "error_count": 1,
+            })
+            continue
+
+        r = await db.execute(select(School).where(School.id == school_id))
+        school = r.scalar_one_or_none()
+        if not school:
+            results.append({
+                "sheet": sheet_name, "district": district_short, "school": f"ID={school_id}",
+                "total_processed": 0, "created": 0, "updated": 0, "skipped": 0,
+                "errors": [{"row": 0, "reason": f"ไม่พบโรงเรียน ID={school_id} ในระบบ"}],
+                "error_count": 1,
+            })
+            continue
 
         created, updated, skipped = 0, 0, 0
         errors: list[dict] = []

@@ -430,15 +430,18 @@ class StudentCreate(BaseModel):
     first_name: str
     last_name: str
     gender: str | None = None
+    birthdate: str | None = None
     grade: str | None = None
     classroom: str | None = None
     school_id: int
+    national_id: str | None = None
 
 class StudentUpdate(BaseModel):
     title: str | None = None
     first_name: str | None = None
     last_name: str | None = None
     gender: str | None = None
+    birthdate: str | None = None
     grade: str | None = None
     classroom: str | None = None
     school_id: int | None = None
@@ -449,17 +452,32 @@ async def create_student(
     current_user = Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.import_service import normalize_national_id
+
     stu = Student(
         student_code=body.student_code,
         title=body.title,
         first_name=body.first_name,
         last_name=body.last_name,
         gender=body.gender,
+        birthdate=body.birthdate,
         grade=body.grade,
         classroom=body.classroom,
         school_id=body.school_id,
         is_active=True,
     )
+
+    if body.national_id and body.national_id.strip():
+        nid, err = normalize_national_id(body.national_id.strip())
+        if err:
+            raise HTTPException(400, f"เลขบัตรประชาชนไม่ถูกต้อง: {err}")
+        new_hash = hash_pii(nid)
+        dup = await db.execute(select(Student).where(Student.national_id_hash == new_hash))
+        if dup.scalar_one_or_none():
+            raise HTTPException(409, "เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว")
+        stu.national_id = encrypt_pii(nid)
+        stu.national_id_hash = new_hash
+
     db.add(stu)
     await db.commit()
     await db.refresh(stu)
@@ -1147,14 +1165,15 @@ async def skr_import_preview(
 async def skr_import_confirm(
     file: UploadFile = File(...),
     selected_sheets: str = Form(..., description="JSON array ของชื่อ sheet ที่เลือก"),
-    affiliation_id: Optional[int] = Form(None),
+    school_map: str = Form(..., description='JSON dict: {"sheet_name": school_id}'),
     current_user = Depends(require_role("systemadmin", "superadmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Import นักศึกษา สกร. จาก sheets ที่เลือก
-    - selected_sheets: JSON string เช่น '["อ.เมือง","อ.ด่านซ้าย"]'
-    - auto-create สกร.อำเภอX schools ถ้ายังไม่มีในระบบ
+    - selected_sheets: JSON array เช่น '["อ.เมือง","อ.ด่านซ้าย"]'
+    - school_map: JSON dict เช่น '{"อ.เมือง": 12, "อ.ด่านซ้าย": 13}'
+      admin ต้องสร้างโรงเรียน สกร. ก่อนแล้วค่อย import
     """
     filename = file.filename or ""
     if not (filename.lower().endswith(".xls") or filename.lower().endswith(".xlsx")):
@@ -1163,12 +1182,20 @@ async def skr_import_confirm(
     try:
         sheets = _json_skr.loads(selected_sheets)
         if not isinstance(sheets, list) or not sheets:
-            raise ValueError
+            raise ValueError("selected_sheets must be a non-empty list")
     except Exception:
         raise HTTPException(400, "selected_sheets ต้องเป็น JSON array ของชื่อ sheet")
 
+    try:
+        smap_raw = _json_skr.loads(school_map)
+        if not isinstance(smap_raw, dict):
+            raise ValueError("school_map must be a dict")
+        smap = {k: int(v) for k, v in smap_raw.items()}
+    except Exception:
+        raise HTTPException(400, 'school_map ต้องเป็น JSON dict เช่น {"อ.เมือง": 12}')
+
     content = await file.read()
-    return await bulk_import_skr_sheets(db, content, sheets, affiliation_id)
+    return await bulk_import_skr_sheets(db, content, sheets, smap)
 
 
 # ──────────────────────────────────────────

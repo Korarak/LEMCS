@@ -17,7 +17,7 @@ interface Student {
 interface StudentsResponse { total: number; items: Student[]; }
 interface School { id: number; name: string; district_id: number | null; affiliation_id: number | null; school_type: string | null; }
 interface District { id: number; name: string; affiliation_id: number; }
-interface Affiliation { id: number; name: string; }
+interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
 const GENDER_ICON: Record<string, string> = { "ชาย": "👦", "หญิง": "👧" };
 
@@ -33,7 +33,6 @@ const GRADES_BY_TYPE: Record<string, string[]> = {
   "มัธยมศึกษา": [...G_LOWSEC, ...G_UPSEC],                     // ม.1–6
   "อาชีวศึกษา": G_VOC,                                          // ปวช.1–3 + ปวส.1–2
   "เอกชน":      [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC, ...G_VOC], // ทุกระดับ
-  "กศน.":       [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC],        // (ชื่อเดิม — compat)
   "สกร.":       [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC],        // กรมส่งเสริมการเรียนรู้
 };
 
@@ -60,7 +59,7 @@ const TITLE_GENDER: Record<string, string> = {
   "เด็กหญิง": "หญิง", "นางสาว": "หญิง", "นาง": "หญิง",
 };
 
-const INIT_FORM = { student_code: "", title: "นาย", first_name: "", last_name: "", gender: "ชาย", grade: "ม.1", classroom: "1", school_id: "" };
+const INIT_FORM = { student_code: "", title: "นาย", first_name: "", last_name: "", gender: "ชาย", birthdate: "", grade: "ม.1", classroom: "1", school_id: "", national_id: "" };
 const PAGE_SIZE = 20;
 
 function useDebounce(value: string, delay: number) {
@@ -177,6 +176,7 @@ export default function StudentsPage() {
   const [form,         setForm]         = useState({ ...INIT_FORM });
   const [saving,       setSaving]       = useState(false);
   const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
+  const [formNidError, setFormNidError] = useState("");
 
   // ── National ID modal ────────────────────────────────────────────
   const [nidTarget,    setNidTarget]    = useState<Student | null>(null);
@@ -190,7 +190,9 @@ export default function StudentsPage() {
   function validateThaiId(id: string): string {
     const s = id.replace(/[-\s]/g, "");
     if (/^[Gg]\d{12}$/.test(s)) return "";
-    if (!/^\d{13}$/.test(s)) return "ต้องเป็นตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก)";
+    if (!/^\d{13}$/.test(s)) return `ต้องเป็นตัวเลข 13 หลัก หรือ G-Code (พบ ${s.replace(/\D/g, "").length} หลัก)`;
+    if (s[0] === "0") return "เลขบัตรประชาชนต้องไม่ขึ้นต้นด้วย 0";
+    if (parseInt(s[0]) > 8) return "เลขบัตรประชาชนบุคคลธรรมดาต้องขึ้นต้นด้วย 1–8";
     let sum = 0;
     for (let i = 0; i < 12; i++) sum += parseInt(s[i]) * (13 - i);
     const check = (11 - (sum % 11)) % 10;
@@ -212,13 +214,13 @@ export default function StudentsPage() {
     } finally { setNidSaving(false); }
   };
 
-  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setModal("add"); };
+  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setFormNidError(""); setModal("add"); };
   const openEdit = (s: Student) => {
     setEditing(s);
     setForm({ student_code: s.student_code, title: s.title || "นาย",
       first_name: s.first_name, last_name: s.last_name,
-      gender: s.gender || "ชาย", grade: s.grade || "ม.1", classroom: s.classroom || "1",
-      school_id: s.school_id?.toString() || "" });
+      gender: s.gender || "ชาย", birthdate: s.birthdate || "", grade: s.grade || "ม.1", classroom: s.classroom || "1",
+      school_id: s.school_id?.toString() || "", national_id: "" });
     setModal("edit");
   };
 
@@ -226,11 +228,25 @@ export default function StudentsPage() {
     if (!form.student_code || !form.first_name || !form.last_name) {
       toast("กรุณากรอกข้อมูลที่จำเป็น", "warning"); return;
     }
+    if (modal === "add" && form.national_id.trim()) {
+      const err = validateThaiId(form.national_id);
+      if (err) { setFormNidError(err); toast(`เลขบัตรประชาชน: ${err}`, "warning"); return; }
+    }
     setSaving(true);
     try {
-      const body = { ...form, school_id: form.school_id ? Number(form.school_id) : undefined };
-      if (modal === "add") await api.post("/admin/students", body);
-      else if (editing)    await api.put(`/admin/students/${editing.id}`, body);
+      const body: Record<string, unknown> = {
+        ...form,
+        school_id: form.school_id ? Number(form.school_id) : undefined,
+        birthdate: form.birthdate || null,
+      };
+      if (modal === "add") {
+        if (!form.national_id.trim()) delete body.national_id;
+        else body.national_id = form.national_id.replace(/[-\s]/g, "");
+        await api.post("/admin/students", body);
+      } else if (editing) {
+        const { national_id: _nid, ...editBody } = body;
+        await api.put(`/admin/students/${editing.id}`, editBody);
+      }
       setModal(null); mutate(swrKey);
       toast(modal === "add" ? "เพิ่มนักเรียนสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
     } catch (e: any) {
@@ -284,7 +300,7 @@ export default function StudentsPage() {
               onChange={e => setFilterAffil(e.target.value)}
             >
               <option value="">ทุกสังกัด</option>
-              {affiliations?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {affiliations?.map(a => <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>)}
             </select>
 
             {/* เขต — แสดงเฉพาะที่ตรงกับสังกัด */}
@@ -380,7 +396,7 @@ export default function StudentsPage() {
             <div className="flex flex-wrap gap-1 text-xs pt-1 border-t border-base-200">
               {filterAffil && (
                 <span className="badge badge-outline gap-1">
-                  {affiliations?.find(a => String(a.id) === filterAffil)?.name ?? filterAffil}
+                  {(() => { const a = affiliations?.find(a => String(a.id) === filterAffil); return a ? (a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name) : filterAffil; })()}
                   <button onClick={() => setFilterAffil("")} className="hover:text-error">✕</button>
                 </span>
               )}
@@ -553,6 +569,19 @@ export default function StudentsPage() {
                   <option value="หญิง">หญิง</option>
                 </select>
               </div>
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">วันเกิด</span>
+                  <span className="label-text-alt text-base-content/40">ใช้ login</span>
+                </label>
+                <input
+                  type="date"
+                  className="input input-bordered"
+                  value={form.birthdate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={e => setForm({...form, birthdate: e.target.value})}
+                />
+              </div>
               <div className="form-control col-span-2">
                 <label className="label"><span className="label-text">โรงเรียน</span></label>
                 <select className="select select-bordered" value={form.school_id} onChange={e => setForm({...form, school_id: e.target.value, grade: "ม.1"})}>
@@ -572,6 +601,31 @@ export default function StudentsPage() {
                 <label className="label"><span className="label-text">ห้อง</span></label>
                 <input className="input input-bordered" value={form.classroom} onChange={e => setForm({...form, classroom: e.target.value})}/>
               </div>
+              {modal === "add" && (
+                <div className="form-control col-span-2">
+                  <label className="label">
+                    <span className="label-text">เลขบัตรประชาชน</span>
+                    <span className="label-text-alt text-base-content/40">ไม่บังคับ</span>
+                  </label>
+                  <input
+                    className={`input input-bordered font-mono tracking-widest ${formNidError ? "input-error" : ""}`}
+                    placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
+                    value={form.national_id}
+                    maxLength={17}
+                    onChange={e => {
+                      setForm({...form, national_id: e.target.value});
+                      setFormNidError("");
+                    }}
+                    onBlur={e => {
+                      if (e.target.value.trim()) setFormNidError(validateThaiId(e.target.value));
+                    }}
+                  />
+                  {formNidError
+                    ? <label className="label"><span className="label-text-alt text-error">{formNidError}</span></label>
+                    : <label className="label"><span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span></label>
+                  }
+                </div>
+              )}
             </div>
             <div className="modal-action">
               <button className="btn btn-ghost" onClick={() => setModal(null)}>ยกเลิก</button>

@@ -214,7 +214,7 @@ function DistrictSection({
   };
 
   const affMap = useMemo(
-    () => new Map(affiliations.map(a => [a.id, a.name])),
+    () => new Map(affiliations.map(a => [a.id, a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name])),
     [affiliations],
   );
 
@@ -270,7 +270,7 @@ function DistrictSection({
             <option value="">ทุกสังกัด ({districts.length})</option>
             {affiliations.map(a => (
               <option key={a.id} value={String(a.id)}>
-                {a.name} ({districts.filter(d => d.affiliation_id === a.id).length})
+                {a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name} ({districts.filter(d => d.affiliation_id === a.id).length})
               </option>
             ))}
           </select>

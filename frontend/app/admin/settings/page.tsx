@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { hasRole } from "@/lib/auth";
 
-interface Affiliation { id: number; name: string; }
+interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
 function DangerZone() {
   const { toast: showToast } = useToast();
@@ -57,7 +57,7 @@ function DangerZone() {
             >
               <option value="">— เลือกสังกัด ({affiliations.length} สังกัด) —</option>
               {affiliations.map(a => (
-                <option key={a.id} value={a.id}>{a.name}</option>
+                <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>
               ))}
             </select>
             <button
