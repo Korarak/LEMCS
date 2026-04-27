@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { getAdminRole, type AdminRole } from "@/lib/auth";
+import { getAdminRole, getAdminSchoolId, type AdminRole } from "@/lib/auth";
 
 type NavItem = { href: string; label: string; icon: string; roles?: AdminRole[] };
 type NavSection = { label: string; items: NavItem[] };
@@ -34,7 +34,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/admin/survey-rounds", label: "รอบการสำรวจ",        icon: "📅", roles: ["systemadmin", "superadmin"] },
       { href: "/admin/users",        label: "ผู้ใช้งาน",          icon: "👤", roles: ["systemadmin", "superadmin"] },
       { href: "/admin/import",     label: "นำเข้าข้อมูล",        icon: "📥", roles: ["systemadmin", "schooladmin"] },
-      { href: "/admin/import-skr", label: "นำเข้าข้อมูล สกร.",   icon: "📗", roles: ["systemadmin", "superadmin"] },
+      { href: "/admin/import-skr", label: "นำเข้าข้อมูล สกร.",   icon: "📗", roles: ["systemadmin", "superadmin", "schooladmin"] },
       { href: "/admin/audit-logs", label: "Audit Log",            icon: "🔍", roles: ["systemadmin", "superadmin"] },
       { href: "/admin/committee",  label: "คณะกรรมการดำเนินงาน", icon: "📜" },
       { href: "/admin/settings",   label: "ตั้งค่าระบบ",         icon: "⚙️", roles: ["systemadmin"] },
@@ -44,11 +44,14 @@ const NAV_SECTIONS: NavSection[] = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [role, setRole] = useState<AdminRole | null>(null);
 
-  useEffect(() => { setRole(getAdminRole()); }, []);
+  useEffect(() => {
+    setRole(getAdminRole());
+  }, [pathname]);
 
   function visibleItems(items: NavItem[]): NavItem[] {
     if (!role) return [];

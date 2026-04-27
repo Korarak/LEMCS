@@ -23,6 +23,15 @@ export function getAdminRole(): AdminRole | null {
   return role as AdminRole;
 }
 
+export function getAdminSchoolId(): number | null {
+  if (typeof window === "undefined") return null;
+  const token = localStorage.getItem("access_token") ?? localStorage.getItem("lemcs_token");
+  if (!token) return null;
+  const payload = decodeToken(token);
+  const sid = payload?.school_id;
+  return typeof sid === "number" ? sid : null;
+}
+
 /** Returns true if the current user has at least one of the given roles */
 export function hasRole(...roles: AdminRole[]): boolean {
   const role = getAdminRole();

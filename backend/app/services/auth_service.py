@@ -72,6 +72,8 @@ async def create_tokens(user: User) -> dict:
     }
     refresh_payload = {
         "sub": str(user.id),
+        "role": user.role,
+        "school_id": user.school_id,
         "type": "refresh",
         "exp": datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     }
@@ -87,10 +89,10 @@ async def refresh_access_token(refresh_token: str) -> dict:
         payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
         if payload.get("type") != "refresh":
             raise ValueError("ไม่ใช่ refresh token")
-        # สร้าง access token ใหม่ (ไม่ต้องสร้าง refresh ใหม่)
         new_access = {
             "sub": payload["sub"],
             "role": payload.get("role", "student"),
+            "school_id": payload.get("school_id"),
             "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         }
         return {

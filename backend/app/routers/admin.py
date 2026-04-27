@@ -6,6 +6,7 @@ from app.database import get_db
 from app.deps import get_current_admin_user, require_role
 from app.models.db_models import School, Student, District, Affiliation, User, AuditLog, Assessment, Alert, Notification
 from app.services.encryption import encrypt_pii, hash_pii
+from app.services.auth_service import create_tokens
 
 router = APIRouter()
 
@@ -235,6 +236,7 @@ async def get_schools(
 async def get_schools_stats(
     district_id: int | None = Query(None),
     affiliation_id: int | None = Query(None),
+    for_picker: bool = Query(False, description="ถ้า True จะไม่กรอง scope ของ schooladmin — ใช้สำหรับ picker เลือกโรงเรียนใน import"),
     current_user = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -242,7 +244,7 @@ async def get_schools_stats(
     # Base school query with RBAC
     school_query = select(School).join(District, School.district_id == District.id)
 
-    if current_user.role == "schooladmin":
+    if current_user.role == "schooladmin" and not for_picker:
         school_query = school_query.where(School.id == current_user.school_id)
     elif current_user.role == "commissionadmin":
         if current_user.district_id:
@@ -743,9 +745,13 @@ class SchoolUpdate(BaseModel):
 @router.post("/schools")
 async def create_school(
     body: SchoolCreate,
-    current_user = Depends(require_role("systemadmin")),
+    current_user = Depends(require_role("systemadmin", "schooladmin")),
     db: AsyncSession = Depends(get_db),
 ):
+    # schooladmin ที่ผูกโรงเรียนแล้วห้ามสร้างเพิ่ม
+    if current_user.role == "schooladmin" and current_user.school_id is not None:
+        raise HTTPException(403, "คุณมีโรงเรียนที่ผูกไว้แล้ว — ไม่สามารถสร้างโรงเรียนใหม่ได้")
+
     name = normalize_school_name(body.name.strip(), body.school_type)
     school = School(
         name=name,
@@ -756,7 +762,23 @@ async def create_school(
     db.add(school)
     await db.commit()
     await db.refresh(school)
-    return {"id": school.id, "name": school.name, "created": True}
+
+    result: dict = {"id": school.id, "name": school.name, "created": True,
+                    "school_linked": False, "new_tokens": None}
+
+    # schooladmin ที่ยังไม่ผูกโรงเรียน → ผูกกับโรงเรียนที่เพิ่งสร้าง
+    if current_user.role == "schooladmin":
+        current_user.school_id = school.id
+        await db.commit()
+        await db.refresh(current_user)
+        tokens = await create_tokens(current_user)
+        result["school_linked"] = True
+        result["new_tokens"] = {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+        }
+
+    return result
 
 @router.put("/schools/{school_id}")
 async def update_school(
@@ -1030,8 +1052,11 @@ async def smart_import_confirm(
     """
     import json as _json
 
-    # schooladmin สามารถ import ได้เฉพาะโรงเรียนตัวเอง
-    if current_user.role == "schooladmin" and current_user.school_id != school_id:
+    # schooladmin ที่ยังไม่ผูกโรงเรียน (unlinked) → อนุญาต import ครั้งแรกได้
+    # schooladmin ที่ผูกโรงเรียนแล้ว → import ได้เฉพาะโรงเรียนตัวเอง
+    if (current_user.role == "schooladmin"
+            and current_user.school_id is not None
+            and current_user.school_id != school_id):
         raise HTTPException(403, "คุณสามารถ import ได้เฉพาะโรงเรียนของคุณเท่านั้น")
 
     # ตรวจสอบว่า school_id มีอยู่จริง
@@ -1065,6 +1090,23 @@ async def smart_import_confirm(
         col_map_override=col_map_override,
     )
     result["school_name"] = school.name
+
+    # ถ้า schooladmin ยังไม่มีโรงเรียน → ผูกกับโรงเรียนที่เพิ่ง import
+    school_linked = False
+    new_tokens = None
+    if current_user.role == "schooladmin" and current_user.school_id is None:
+        current_user.school_id = school_id
+        await db.commit()
+        await db.refresh(current_user)
+        school_linked = True
+        tokens = await create_tokens(current_user)
+        new_tokens = {
+            "access_token": tokens["access_token"],
+            "refresh_token": tokens["refresh_token"],
+        }
+
+    result["school_linked"] = school_linked
+    result["new_tokens"] = new_tokens
     return result
 
 
@@ -1149,7 +1191,7 @@ import json as _json_skr
 @router.post("/import/skr-preview")
 async def skr_import_preview(
     file: UploadFile = File(...),
-    current_user = Depends(require_role("systemadmin", "superadmin")),
+    current_user = Depends(require_role("systemadmin", "superadmin", "schooladmin")),
 ):
     """
     Preview ไฟล์ สกร.: อ่าน .XLS → คืน list ของ sheets พร้อม student count + preview 5 แถว
@@ -1166,7 +1208,7 @@ async def skr_import_confirm(
     file: UploadFile = File(...),
     selected_sheets: str = Form(..., description="JSON array ของชื่อ sheet ที่เลือก"),
     school_map: str = Form(..., description='JSON dict: {"sheet_name": school_id}'),
-    current_user = Depends(require_role("systemadmin", "superadmin")),
+    current_user = Depends(require_role("systemadmin", "superadmin", "schooladmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1193,6 +1235,13 @@ async def skr_import_confirm(
         smap = {k: int(v) for k, v in smap_raw.items()}
     except Exception:
         raise HTTPException(400, 'school_map ต้องเป็น JSON dict เช่น {"อ.เมือง": 12}')
+
+    # schooladmin ต้องใช้ได้เฉพาะโรงเรียนของตัวเอง
+    if current_user.role == "schooladmin" and current_user.school_id is not None:
+        allowed = {current_user.school_id}
+        for sheet_name, sid in smap.items():
+            if sid not in allowed:
+                raise HTTPException(403, "schooladmin สามารถ import ได้เฉพาะโรงเรียนของตัวเองเท่านั้น")
 
     content = await file.read()
     return await bulk_import_skr_sheets(db, content, sheets, smap)
