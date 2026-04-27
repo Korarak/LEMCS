@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LEMCS — ระบบประเมินสุขภาพจิตนักเรียน จังหวัดเลย</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reset.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.css" />
+  <style>
+    :root {
+      --navy:  #0b1526; --navy2: #0f1f38; --card: #121f32; --card2: #0f1c30;
+      --teal:  #00c9b1; --teal2: #00e5c8;
+      --blue:  #1e90ff; --green: #2ecc71; --yellow: #f0c040;
+      --red:   #e74c3c; --purple: #9b59b6;
+      --white: #ffffff; --light: #e8f0fe; --muted: #8fa3bc;
+      --dkblue:#081e38;
+    }
+    .reveal-viewport { background: var(--navy); }
+    .reveal { font-family: 'Sarabun', sans-serif; font-size: 36px; color: var(--light); }
+    .reveal .slides section { text-align: left; padding: 38px 56px; height: 100%; box-sizing: border-box; }
+    .reveal h1 { font-size: 2.2em; font-weight: 800; line-height: 1.15; margin-bottom: 0.3em; }
+    .reveal h2 { font-size: 1.5em; font-weight: 700; margin-bottom: 0.4em; }
+    .reveal p  { font-size: 0.8em; line-height: 1.7; margin: 0.3em 0; }
+    .reveal ul { margin-left: 1.2em; } .reveal li { font-size: 0.78em; line-height: 1.8; }
+    .reveal strong { color: var(--teal2); }
+
+    /* accents */
+    .ac    { color: var(--teal2); }
+    .ac-y  { color: var(--yellow); }
+    .ac-g  { color: var(--green); }
+    .ac-r  { color: var(--red); }
+    .ac-b  { color: var(--blue); }
+    .muted { color: var(--muted); font-size: 0.72em; }
+
+    /* divider */
+    .div { width: 68px; height: 4px; background: linear-gradient(90deg,var(--teal),var(--blue)); border-radius:2px; margin:.4em 0 .9em; }
+
+    /* slide label */
+    .slbl { position:absolute; top:26px; right:52px; font-size:.42em; font-weight:600; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; }
+
+    /* ─── Cover ─── */
+    .cover { background:linear-gradient(135deg,#0b1526 0%,#0f2040 55%,#081830 100%); display:flex!important; flex-direction:column; justify-content:center; text-align:center!important; position:relative; overflow:hidden; }
+    .cover::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 700px 500px at 20% 80%,rgba(0,201,177,.08) 0%,transparent 70%),radial-gradient(ellipse 500px 400px at 80% 20%,rgba(30,144,255,.08) 0%,transparent 70%); pointer-events:none; }
+    .cbadge { display:inline-block; background:rgba(0,201,177,.15); border:1px solid rgba(0,201,177,.4); color:var(--teal2); padding:5px 22px; border-radius:100px; font-size:.42em; font-weight:600; letter-spacing:.15em; text-transform:uppercase; margin-bottom:.7em; }
+    .cstats { display:flex; justify-content:center; gap:44px; margin-top:2.2em; }
+    .cstat-num { font-size:1.5em; font-weight:800; color:var(--teal2); display:block; }
+    .cstat-lbl { font-size:.42em; color:var(--muted); display:block; margin-top:2px; }
+
+    /* ─── Section divider ─── */
+    .secslide { background:linear-gradient(160deg,#0b1a2e 0%,#081830 100%); display:flex!important; flex-direction:column; justify-content:center; text-align:center!important; position:relative; overflow:hidden; }
+    .secslide::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 600px 400px at 50% 60%,rgba(0,201,177,.06) 0%,transparent 70%); pointer-events:none; }
+    .secnum { font-size:.48em; font-weight:700; letter-spacing:.2em; color:var(--teal); text-transform:uppercase; margin-bottom:.5em; }
+
+    /* ─── Cards ─── */
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+    .grid4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:14px; }
+    .card  { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:13px; padding:20px 22px; }
+    .card-t{ border-left:3px solid var(--teal); }
+    .card-b{ border-left:3px solid var(--blue); }
+    .card-g{ border-left:3px solid var(--green); }
+    .card-y{ border-left:3px solid var(--yellow); }
+    .card-r{ border-left:3px solid var(--red); }
+    .card-p{ border-left:3px solid var(--purple); }
+    .card h3 { font-size:.74em; margin-bottom:5px; color:var(--teal2); }
+    .card p, .card li { font-size:.66em; color:#a8bdd4; line-height:1.65; }
+    .card ul { margin-left:1em; margin-top:4px; }
+    .cicon { font-size:1.4em; display:block; margin-bottom:7px; }
+
+    /* ─── Stat box ─── */
+    .statbox { background:linear-gradient(135deg,rgba(0,201,177,.12),rgba(30,144,255,.07)); border:1px solid rgba(0,201,177,.22); border-radius:13px; padding:18px; text-align:center; }
+    .statnum { font-size:1.5em; font-weight:800; color:var(--teal2); display:block; }
+    .statlbl { font-size:.56em; color:var(--muted); display:block; margin-top:4px; }
+
+    /* ─── Flow step ─── */
+    .flow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:.8em; }
+    .fstep { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09); border-radius:10px; padding:12px 14px; text-align:center; flex:1; min-width:100px; }
+    .fstep .fi  { font-size:1.25em; display:block; margin-bottom:4px; }
+    .fstep .ft  { font-size:.58em; font-weight:600; display:block; margin-bottom:3px; }
+    .fstep .fd  { font-size:.52em; color:var(--muted); }
+    .farrow { font-size:1.1em; color:var(--teal); flex-shrink:0; }
+
+    /* ─── Pill ─── */
+    .pill   { display:inline-block; padding:3px 13px; border-radius:100px; font-size:.52em; font-weight:600; margin-right:5px; margin-bottom:4px; }
+    .pill-t { background:rgba(0,201,177,.18); color:var(--teal2); border:1px solid rgba(0,201,177,.3); }
+    .pill-b { background:rgba(30,144,255,.18); color:#6ab8ff;    border:1px solid rgba(30,144,255,.3); }
+    .pill-g { background:rgba(46,204,113,.18); color:#5ae09a;    border:1px solid rgba(46,204,113,.3); }
+    .pill-y { background:rgba(240,192,64,.18);  color:#f8d87a;    border:1px solid rgba(240,192,64,.3);  }
+    .pill-r { background:rgba(231,76,60,.18);   color:#f08080;    border:1px solid rgba(231,76,60,.3);   }
+
+    /* ─── Table ─── */
+    .rtbl { width:100%; border-collapse:collapse; font-size:.65em; margin-top:.6em; }
+    .rtbl th { background:rgba(0,201,177,.14); color:var(--teal2); padding:9px 13px; text-align:left; font-weight:600; border-bottom:2px solid rgba(0,201,177,.25); }
+    .rtbl td { padding:8px 13px; border-bottom:1px solid rgba(255,255,255,.05); color:#b0c4d8; vertical-align:top; }
+    .rtbl tr:last-child td { border-bottom:none; }
+    .rtbl .hl { color:var(--teal2); font-weight:600; }
+
+    /* ─── Note banner ─── */
+    .note { background:rgba(0,201,177,.06); border:1px solid rgba(0,201,177,.18); border-radius:10px; padding:10px 16px; margin-top:14px; }
+    .note p { font-size:.62em; color:#8fa3bc; margin:0; }
+
+    /* ─── Two-col layout ─── */
+    .twocol { display:grid; grid-template-columns:1fr 1fr; gap:26px; align-items:start; }
+
+    /* ─── Dashboard section block ─── */
+    .dbsec { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:11px; padding:14px 18px; margin-bottom:10px; }
+    .dbsec-hd { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .dbsec-hd .badge { font-size:.5em; font-weight:700; padding:3px 11px; border-radius:100px; }
+    .dbsec-hd h3 { font-size:.72em; font-weight:700; margin:0; }
+    .dbsec ul { margin-left:1.1em; }
+    .dbsec li { font-size:.63em; color:#a8bdd4; line-height:1.7; }
+
+    /* ─── Login step ─── */
+    .lstep { display:flex; align-items:flex-start; gap:14px; margin-bottom:12px; }
+    .lnum  { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--teal),var(--blue)); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.55em; font-weight:700; color:#0b1526; }
+    .lbody h3 { font-size:.72em; color:var(--teal2); font-weight:600; margin-bottom:3px; }
+    .lbody p  { font-size:.62em; color:var(--muted); margin:0; line-height:1.5; }
+
+    /* Thank you */
+    .ty { background:linear-gradient(145deg,#081830 0%,#0d2244 50%,#081830 100%); display:flex!important; flex-direction:column; justify-content:center; text-align:center!important; position:relative; overflow:hidden; }
+    .ty::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 800px 500px at 50% 50%,rgba(0,201,177,.06) 0%,transparent 65%); pointer-events:none; }
+
+    .reveal .progress { color:var(--teal); }
+    .reveal .controls { color:var(--teal); }
+    .reveal .slide-number { color:var(--muted); font-size:.5em; }
+  </style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ══ S01 Cover ══════════════════════════════════════════════════ -->
+<section class="cover">
+  <div style="position:relative;z-index:1;">
+    <div class="cbadge">Loei Educational MindCare System</div>
+    <h1 class="ac">LEMCS</h1>
+    <p style="font-size:.95em;font-weight:600;color:var(--white);margin:.15em 0;">
+      ระบบดิจิทัลประเมินสุขภาพจิตนักเรียน
+    </p>
+    <p class="muted" style="margin-top:.4em;">
+      จังหวัดเลย &nbsp;·&nbsp; อนุบาล – มัธยมปลาย &nbsp;·&nbsp; ทุกสังกัด สพฐ. · สกร.
+    </p>
+    <div class="cstats">
+      <div><span class="cstat-num">100,000+</span><span class="cstat-lbl">นักเรียนในระบบ</span></div>
+      <div style="border-left:1px solid rgba(255,255,255,.1);padding-left:44px;"><span class="cstat-num">3</span><span class="cstat-lbl">แบบประเมินมาตรฐาน</span></div>
+      <div style="border-left:1px solid rgba(255,255,255,.1);padding-left:44px;"><span class="cstat-num">2</span><span class="cstat-lbl">สังกัด (สพฐ. / สกร.)</span></div>
+      <div style="border-left:1px solid rgba(255,255,255,.1);padding-left:44px;"><span class="cstat-num">5</span><span class="cstat-lbl">ระดับสิทธิ์ RBAC</span></div>
+    </div>
+    <p class="muted" style="margin-top:2.2em;">Executive & Technical Overview &nbsp;·&nbsp; พ.ศ. 2568</p>
+  </div>
+</section>
+
+<!-- ══ S02 ปัญหา ══════════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ที่มา</span>
+  <h2>ปัญหาที่เราพบ</h2>
+  <div class="div"></div>
+  <div class="grid2" style="margin-top:.7em;">
+    <div class="card card-r">
+      <span class="cicon">📊</span>
+      <h3>สถานการณ์สุขภาพจิตเด็ก</h3>
+      <ul>
+        <li><strong>1 ใน 7</strong> เด็กทั่วโลกมีปัญหาสุขภาพจิต</li>
+        <li>เยาวชนไทยอายุ 10–19 ปี ความเสี่ยงกว่า 15%</li>
+        <li>ส่วนใหญ่ไม่ได้รับการตรวจคัดกรอง</li>
+        <li>พบล่าช้า → ผลกระทบระยะยาวรุนแรง</li>
+      </ul>
+    </div>
+    <div class="card card-y">
+      <span class="cicon">🏫</span>
+      <h3>ปัญหาในโรงเรียนปัจจุบัน</h3>
+      <ul>
+        <li>ครูแนะแนว 1 คน ดูแลนักเรียนหลายร้อยคน</li>
+        <li>ระบบกระดาษ: ช้า ข้อมูลกระจัดกระจาย</li>
+        <li>ไม่มี Early Warning ระดับจังหวัด</li>
+        <li>รอผลประเมินแต่ละรอบหลายวัน</li>
+      </ul>
+    </div>
+    <div class="card card-r">
+      <span class="cicon">⚠️</span>
+      <h3>ความเสี่ยงที่พลาด</h3>
+      <ul>
+        <li>ไม่มีระบบแจ้งเตือนกรณีวิกฤต</li>
+        <li>ผู้บริหารไม่เห็นภาพรวมระดับอำเภอ-จังหวัด</li>
+        <li>ติดตามแนวโน้มข้ามรอบไม่ได้</li>
+        <li>โรงเรียนห่างไกลถูกมองข้าม</li>
+      </ul>
+    </div>
+    <div class="card card-b">
+      <span class="cicon">🔒</span>
+      <h3>ข้อกำหนด PDPA</h3>
+      <ul>
+        <li>ข้อมูลสุขภาพจิต = ข้อมูลอ่อนไหว</li>
+        <li>บังคับเข้ารหัสและควบคุมการเข้าถึง</li>
+        <li>ระบบกระดาษไม่รองรับมาตรฐาน</li>
+        <li>ต้องมี Audit Log ทุกการเข้าถึง</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S03 LEMCS คืออะไร ══════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ภาพรวม</span>
+  <h2>LEMCS คืออะไร?</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.6em;">
+    <div>
+      <p style="font-size:.78em;line-height:1.8;color:#c8daf0;">
+        <strong>LEMCS</strong> (Loei Educational MindCare System) คือ
+        <strong>แพลตฟอร์มดิจิทัล</strong> สำหรับคัดกรองและติดตามสุขภาพจิต
+        นักเรียนระดับอนุบาล–มัธยมปลาย ของจังหวัดเลย ครอบคลุมทุกสังกัด
+      </p>
+      <p style="font-size:.78em;line-height:1.8;color:#c8daf0;margin-top:.7em;">
+        ออกแบบให้ <strong>นักเรียนทำแบบประเมินเองได้</strong> บนมือถือ
+        ขณะที่ครูแนะแนวและผู้บริหารเห็น <strong>ผลแบบ Real-time</strong>
+        พร้อมระบบแจ้งเตือนอัตโนมัติภายในระบบทันทีที่พบความเสี่ยง
+      </p>
+      <div style="margin-top:1em;">
+        <span class="pill pill-t">Web Application</span>
+        <span class="pill pill-b">Mobile-first</span>
+        <span class="pill pill-g">Offline PWA</span>
+        <span class="pill pill-y">PDPA Compliant</span>
+        <span class="pill pill-r">Multi-tenant</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="card card-t">
+        <h3>🎯 กลุ่มเป้าหมาย</h3>
+        <p>นักเรียนอนุบาล–มัธยมปลาย ทั่วจังหวัดเลย<br/>ครอบคลุม สพฐ. · สช. · สอศ. · สกร.</p>
+      </div>
+      <div class="card card-b">
+        <h3>📍 ขอบเขต</h3>
+        <p>ทุกโรงเรียน ทุกอำเภอ ในจังหวัดเลย<br/>รองรับขยายไปจังหวัดอื่น (Multi-tenant)</p>
+      </div>
+      <div class="card card-g">
+        <h3>⚡ ใช้งานผ่าน</h3>
+        <p>เว็บเบราว์เซอร์บนมือถือ แท็บเล็ต คอมพิวเตอร์<br/>ไม่ต้องติดตั้งแอปเพิ่มเติม</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S04 ผู้ใช้งาน ══════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ผู้ใช้งาน</span>
+  <h2>ผู้ใช้งานและระดับสิทธิ์ (RBAC)</h2>
+  <div class="div"></div>
+  <table class="rtbl" style="margin-top:.6em;">
+    <thead>
+      <tr><th>ผู้ใช้งาน</th><th>สิ่งที่ทำได้</th><th>ขอบเขตข้อมูล</th><th>Session</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="hl">🧒 นักเรียน</td><td>ทำแบบประเมิน · ดูผลและคำแนะนำ · ดูประวัติตัวเอง</td><td>เฉพาะตนเอง</td><td>60 นาที</td></tr>
+      <tr><td class="hl">👩‍🏫 ครูแนะแนว</td><td>ติดตามนักเรียน · ดู Alert · Dashboard โรงเรียน · Export รายงาน</td><td>ในโรงเรียนตัวเอง</td><td>8 ชั่วโมง</td></tr>
+      <tr><td class="hl">🏛️ ผู้บริหารอำเภอ</td><td>เปรียบเทียบข้ามโรงเรียน · แนวโน้มระดับอำเภอ · รายงาน</td><td>ในอำเภอตัวเอง</td><td>8 ชั่วโมง</td></tr>
+      <tr><td class="hl">🏢 ผู้บริหารจังหวัด</td><td>ภาพรวมทั้งจังหวัด · วิเคราะห์ Trend · Import ข้อมูล</td><td>ทั้งจังหวัด</td><td>8 ชั่วโมง</td></tr>
+      <tr><td class="hl">⚙️ System Admin</td><td>จัดการผู้ใช้ · Audit Log · System Config · ทุก tenant</td><td>ไม่จำกัด</td><td>8 ชั่วโมง</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><p>Admin ทุกระดับเข้าสู่ระบบผ่าน <strong>หน้า Admin Login</strong> ด้วย Username + Password &nbsp;·&nbsp; นักเรียนเข้าผ่านหน้า Login นักเรียนโดยไม่ต้องจำรหัสผ่าน</p></div>
+</section>
+
+<!-- ══ S05 แบบประเมิน ══════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">เครื่องมือประเมิน</span>
+  <h2>แบบประเมินมาตรฐานสากล 3 ชุด</h2>
+  <div class="div"></div>
+  <div class="grid3" style="margin-top:.7em;">
+    <div class="card card-y" style="padding:18px 20px;">
+      <span class="cicon">😰</span>
+      <div style="font-size:1.5em;font-weight:800;color:var(--yellow);margin-bottom:2px;">ST-5</div>
+      <p style="color:var(--yellow);font-weight:600;font-size:.66em;margin-bottom:8px;">วัดระดับความเครียด</p>
+      <ul>
+        <li>อายุเป้าหมาย: <strong>15 ปีขึ้นไป</strong></li>
+        <li>จำนวน: 5 ข้อคำถาม</li>
+        <li>คะแนน: 0–15</li>
+        <li>4 ระดับ: ปกติ / เล็กน้อย / ปานกลาง / รุนแรง</li>
+        <li>ไม่มี Suicide Flag</li>
+        <li>มาตรฐาน: กรมสุขภาพจิต ไทย</li>
+      </ul>
+    </div>
+    <div class="card card-b" style="padding:18px 20px;">
+      <span class="cicon">😔</span>
+      <div style="font-size:1.5em;font-weight:800;color:var(--blue);margin-bottom:2px;">PHQ-A</div>
+      <p style="color:#6ab8ff;font-weight:600;font-size:.66em;margin-bottom:8px;">ภาวะซึมเศร้าวัยรุ่น</p>
+      <ul>
+        <li>อายุเป้าหมาย: <strong>11–20 ปี</strong></li>
+        <li>จำนวน: 9 ข้อหลัก + BQ1/BQ2</li>
+        <li>คะแนน: 0–27</li>
+        <li>5 ระดับ: ไม่มี → รุนแรงมาก</li>
+        <li><span class="ac-r">⚠️ Suicide Flag</span>: Q9 ≥ 1 หรือ BQ = true</li>
+        <li>มาตรฐาน: Spitzer et al.</li>
+      </ul>
+    </div>
+    <div class="card card-g" style="padding:18px 20px;">
+      <span class="cicon">🧒</span>
+      <div style="font-size:1.5em;font-weight:800;color:var(--green);margin-bottom:2px;">CDI</div>
+      <p style="color:#5ae09a;font-weight:600;font-size:.66em;margin-bottom:8px;">ภาวะซึมเศร้าเด็ก</p>
+      <ul>
+        <li>อายุเป้าหมาย: <strong>7–17 ปี</strong></li>
+        <li>จำนวน: 27 ข้อ (ก/ข/ค)</li>
+        <li>คะแนน: 0–54</li>
+        <li>2 ระดับ: ปกติ (&lt;15) / ต้องดูแล (≥15)</li>
+        <li>≥15 = แจ้งเตือนอัตโนมัติ</li>
+        <li>มาตรฐาน: Maria Kovacs 1985</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note"><p>💡 <strong>ระบบเลือกอัตโนมัติตามอายุ:</strong> อายุ 15–17 ปี → ครบ 3 ชุด &nbsp;|&nbsp; 11–14 ปี → CDI + PHQ-A &nbsp;|&nbsp; 7–10 ปี → CDI &nbsp;|&nbsp; ต่ำกว่า 7 ปี หรือไม่มีวันเกิด → ไม่แสดงแบบประเมิน</p></div>
+</section>
+
+<!-- ══ S06 ขั้นตอนการเข้าใช้งาน — นักเรียน ══════════════════════ -->
+<section>
+  <span class="slbl">Student Flow</span>
+  <h2>ขั้นตอนการเข้าใช้งาน — นักเรียน</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.6em;gap:22px;">
+
+    <!-- สพฐ. -->
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <span style="background:rgba(79,70,229,.18);color:#818cf8;border:1px solid rgba(79,70,229,.35);font-size:.5em;font-weight:700;padding:3px 12px;border-radius:100px;">สพฐ. / อาชีวะ / เอกชน</span>
+      </div>
+      <div class="lstep">
+        <div class="lnum">1</div>
+        <div class="lbody"><h3>เลือกสังกัด "สพฐ. / อาชีวะ / เอกชน"</h3><p>หน้าแรกให้เลือกระหว่าง สพฐ. หรือ สกร.</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum">2</div>
+        <div class="lbody"><h3>กรอกเลขบัตรประชาชน 13 หลัก</h3><p>แสดง Progress Bar และ format x-xxxx-xxxxx-xx-x อัตโนมัติ</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum">3</div>
+        <div class="lbody"><h3>เลือกวันเดือนปีเกิด (พ.ศ.)</h3><p>Dropdown แยก วัน / เดือน / ปี รองรับ ±25 ปีจากปัจจุบัน</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum">4</div>
+        <div class="lbody"><h3>กรอกรหัสประจำตัวนักเรียน</h3><p>รหัสตามทะเบียนของโรงเรียน (ตัวเลข)</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum" style="background:linear-gradient(135deg,var(--green),#27ae60);">✓</div>
+        <div class="lbody"><h3>เข้าสู่ Dashboard นักเรียน</h3><p>ระบบตรวจสอบข้อมูลกับฐานข้อมูล — ถ้าครบถูกต้องเข้าได้ทันที</p></div>
+      </div>
+    </div>
+
+    <!-- สกร. -->
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <span style="background:rgba(217,119,6,.18);color:#fbbf24;border:1px solid rgba(217,119,6,.35);font-size:.5em;font-weight:700;padding:3px 12px;border-radius:100px;">สกร. — สำนักงานส่งเสริมการเรียนรู้</span>
+      </div>
+      <div class="lstep">
+        <div class="lnum" style="background:linear-gradient(135deg,var(--yellow),#e67e22);">1</div>
+        <div class="lbody"><h3>เลือกสังกัด "สกร."</h3><p>สำหรับนักศึกษา กศน. / สกร. เลย</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum" style="background:linear-gradient(135deg,var(--yellow),#e67e22);">2</div>
+        <div class="lbody"><h3>กรอกรหัสนักศึกษา สกร.</h3><p>รหัสตามทะเบียน สกร. (ตัวเลข เช่น 6611000258)</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum" style="background:linear-gradient(135deg,var(--yellow),#e67e22);">3</div>
+        <div class="lbody"><h3>เลือกวันเดือนปีเกิด (พ.ศ.)</h3><p>รองรับย้อนหลังถึง 90 ปี</p></div>
+      </div>
+      <div class="lstep">
+        <div class="lnum" style="background:linear-gradient(135deg,var(--green),#27ae60);">✓</div>
+        <div class="lbody"><h3>เข้าสู่ Dashboard นักเรียน</h3><p>เส้นทางสั้นกว่า สพฐ. — ไม่ต้องใช้เลขบัตรประชาชน</p></div>
+      </div>
+      <div class="note" style="margin-top:8px;">
+        <p>ไม่มี OTP ทุกสังกัด — ยืนยันตัวตนด้วยข้อมูลเฉพาะบุคคลที่มีอยู่แล้ว (no password needed)</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ S07 Dashboard นักเรียน ═════════════════════════════════════ -->
+<section>
+  <span class="slbl">Student Dashboard</span>
+  <h2>หน้า Dashboard นักเรียน — เห็นอะไรบ้าง?</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.6em;gap:20px;">
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">✅</span>
+          <h3>ยินยอม PDPA (ครั้งแรกเท่านั้น)</h3>
+        </div>
+        <ul><li>Modal แจ้งนโยบายคุ้มครองข้อมูลส่วนบุคคล</li><li>ต้องกด "ยินยอม" ก่อนเข้าหน้า Dashboard</li><li>หากปฏิเสธ → ออกจากระบบอัตโนมัติ</li></ul>
+      </div>
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">🟢</span>
+          <h3>สถานะรอบการสำรวจ</h3>
+        </div>
+        <ul>
+          <li><span class="ac-g">เปิดรอบ</span> → แสดง Banner สีเขียว "รอบที่กำลังเปิด: ..."</li>
+          <li><span class="ac-y">ยังไม่เปิด</span> → "ยังไม่เปิดรอบการสำรวจ กรุณารอการแจ้งเตือน"</li>
+        </ul>
+      </div>
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">📝</span>
+          <h3>แบบประเมินที่เปิดให้ทำ</h3>
+        </div>
+        <ul><li>แสดงเฉพาะแบบที่เหมาะกับอายุนักเรียน</li><li>มีเฉพาะในรอบสำรวจที่เปิดอยู่</li><li>กดเพื่อเริ่มทำแบบประเมินได้เลย</li></ul>
+      </div>
+
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">💙</span>
+          <h3>สุขภาพจิตของคุณ (WellnessScore)</h3>
+        </div>
+        <ul><li>แสดงเฉพาะเมื่อเคยทำแบบประเมินแล้ว</li><li>สรุประดับสุขภาพจิตจากประวัติล่าสุด</li></ul>
+      </div>
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">📋</span>
+          <h3>ประวัติการเข้าร่วม</h3>
+        </div>
+        <ul><li>รายการการประเมินทุกครั้งที่เคยทำ</li><li>แสดง วันที่ · ประเภท · คะแนน · ระดับ</li><li>กดดูผลละเอียดรายครั้งได้</li></ul>
+      </div>
+
+      <div class="dbsec">
+        <div class="dbsec-hd">
+          <span style="font-size:1.3em;">📄</span>
+          <h3>หน้าผลการประเมิน</h3>
+        </div>
+        <ul><li>คะแนนรวม + ระดับความเสี่ยง</li><li>คำแนะนำเฉพาะบุคคลตามระดับที่ได้</li><li>หากพบความเสี่ยงสูง → แสดงสายด่วน 1323</li></ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══ S08 Admin Dashboard — Section A & B ═══════════════════════ -->
+<section>
+  <span class="slbl">Admin Dashboard A &amp; B</span>
+  <h2>Admin Dashboard — Section A &amp; B: ภาพรวมผู้บริหาร &amp; ศูนย์ปฏิบัติการ</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.45em;gap:14px;align-items:start;">
+
+    <!-- Section A -->
+    <div>
+      <div class="dbsec" style="border-left:3px solid var(--teal);padding:13px 15px;">
+        <div class="dbsec-hd">
+          <span class="badge" style="background:rgba(0,201,177,.2);color:var(--teal2);padding:3px 12px;">A</span>
+          <h3 style="color:var(--teal2);">📊 สรุปภาพรวมผู้บริหาร <small class="muted">refresh อัตโนมัติ 60 วินาที</small></h3>
+        </div>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:4px 0 3px;">① StatsCards — 4 ตัวเลขหลักที่เห็นทันที:</p>
+        <ul>
+          <li><strong>นักเรียนทั้งหมด</strong> — จำนวนนักเรียนในระบบ ณ ปัจจุบัน</li>
+          <li><strong>ทำแล้วในรอบนี้</strong> — จำนวน + % coverage ของรอบสำรวจที่เปิดอยู่</li>
+          <li><strong>ความเสี่ยง moderate+</strong> — นักเรียนที่ต้องติดตามโดยด่วน</li>
+          <li><strong>Alert รอดำเนินการ</strong> — เคสที่ยังไม่มีครู/ผู้บริหารรับไปดูแล</li>
+        </ul>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:6px 0 3px;">② RiskFunnelChart — Funnel 4 ขั้น (เส้นทางดูแลนักเรียน):</p>
+        <div style="display:flex;gap:3px;align-items:center;font-size:.5em;flex-wrap:wrap;margin-bottom:4px;">
+          <span style="background:rgba(0,201,177,.15);color:var(--teal2);padding:2px 7px;border-radius:5px;">ลงทะเบียน</span>
+          <span class="muted">▶</span>
+          <span style="background:rgba(30,144,255,.15);color:#6ab8ff;padding:2px 7px;border-radius:5px;">ทำแล้ว</span>
+          <span class="muted">▶</span>
+          <span style="background:rgba(240,192,64,.15);color:#f8d87a;padding:2px 7px;border-radius:5px;">พบความเสี่ยง</span>
+          <span class="muted">▶</span>
+          <span style="background:rgba(46,204,113,.15);color:#5ae09a;padding:2px 7px;border-radius:5px;">ดูแลแล้ว</span>
+        </div>
+        <ul>
+          <li>แสดงจำนวนนักเรียนที่ลดลงในแต่ละขั้น — เห็นทันทีว่ากระบวนการดูแลมีช่องว่างตรงไหน</li>
+          <li>เช่น: 100,000 ลงทะเบียน → 45,000 ทำแล้ว → 1,200 พบเสี่ยง → 980 ดูแลแล้ว</li>
+        </ul>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:6px 0 3px;">③ InsightPanel — ข้อสรุปอัตโนมัติ 3 ข้อ:</p>
+        <ul>
+          <li>โรงเรียนที่มีอัตราความเสี่ยงสูงสุด Top 3 อันดับ</li>
+          <li>อำเภอที่มีนักเรียนยังไม่ทำแบบประเมินมากที่สุด</li>
+          <li>แบบประเมินที่พบความเสี่ยงระดับ moderate+ มากที่สุด</li>
+        </ul>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:6px 0 3px;">④ AffiliationStudentStats — Bar Chart แยกสังกัด:</p>
+        <ul>
+          <li>แสดงจำนวนนักเรียนทั้งหมดแยก สพฐ. / สอศ. / สช. / สกร.</li>
+          <li>เปรียบเทียบ % ที่ทำแบบประเมินแล้วในแต่ละสังกัด</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Section B -->
+    <div>
+      <div class="dbsec" style="border-left:3px solid var(--red);padding:13px 15px;">
+        <div class="dbsec-hd">
+          <span class="badge" style="background:rgba(231,76,60,.2);color:#f08080;padding:3px 12px;">B</span>
+          <h3 style="color:#f08080;">🚨 ศูนย์ปฏิบัติการ <small class="muted">refresh อัตโนมัติ 30 วินาที</small></h3>
+        </div>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:4px 0 5px;">① AlertStatusSummary — ตัวเลข 3 สถานะ:</p>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <div style="flex:1;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.3);border-radius:7px;padding:6px 3px;text-align:center;">
+            <div style="font-size:.65em;font-weight:800;color:#f08080;">รอดำเนินการ</div>
+            <div style="font-size:.46em;color:var(--muted);">ยังไม่มีใครรับ</div>
+          </div>
+          <div style="flex:1;background:rgba(240,192,64,.12);border:1px solid rgba(240,192,64,.3);border-radius:7px;padding:6px 3px;text-align:center;">
+            <div style="font-size:.65em;font-weight:800;color:#f8d87a;">กำลังดูแล</div>
+            <div style="font-size:.46em;color:var(--muted);">ครูรับไปดูแลแล้ว</div>
+          </div>
+          <div style="flex:1;background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.3);border-radius:7px;padding:6px 3px;text-align:center;">
+            <div style="font-size:.65em;font-weight:800;color:#5ae09a;">เสร็จสิ้น</div>
+            <div style="font-size:.46em;color:var(--muted);">บันทึกผลแล้ว</div>
+          </div>
+        </div>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin-bottom:4px;">② RecentAlerts — ตาราง 8 รายการล่าสุด (แต่ละแถวมี):</p>
+        <ul>
+          <li>ชื่อนักเรียน (masked ตาม PDPA — เห็นบางส่วน) · ชั้น/ห้อง · โรงเรียน</li>
+          <li>ประเภท Alert: <span class="ac-r">CDI Clinical (≥15)</span> หรือ <span class="ac-r">PHQ-A Suicide Risk (Q9≥1 / BQ=true)</span></li>
+          <li>วันที่-เวลา ที่นักเรียนส่งแบบประเมิน · สถานะปัจจุบัน</li>
+          <li>ปุ่ม: เปลี่ยนสถานะ → รอดำเนินการ / กำลังดูแล / เสร็จสิ้น</li>
+          <li>ปุ่ม: ดูประวัตินักเรียนทั้งหมด (drill-down รายบุคคล)</li>
+        </ul>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin-top:6px;margin-bottom:3px;">③ Quick Actions — ปุ่มลัด 4 ปุ่ม:</p>
+        <ul>
+          <li><strong>รายชื่อนักเรียน</strong> — ดู Student table ทั้งหมดพร้อมกรอง</li>
+          <li><strong>Export รายงาน</strong> — ดาวน์โหลด PDF / Excel ทันที</li>
+          <li><strong>นำเข้าข้อมูล</strong> — Import CSV นักเรียนจาก Admin Panel</li>
+          <li><strong>จัดการรอบสำรวจ</strong> — เปิด / ปิด Survey Round สำหรับนักเรียน</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ S09 Admin Dashboard — Section C & D ═══════════════════════ -->
+<section>
+  <span class="slbl">Admin Dashboard C &amp; D</span>
+  <h2>Admin Dashboard — Section C &amp; D: วิเคราะห์เชิงลึก &amp; เปรียบเทียบองค์กร</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.45em;gap:14px;align-items:start;">
+
+    <!-- Section C -->
+    <div>
+      <div class="dbsec" style="border-left:3px solid var(--blue);padding:13px 15px;">
+        <div class="dbsec-hd">
+          <span class="badge" style="background:rgba(30,144,255,.2);color:#6ab8ff;padding:3px 12px;">C</span>
+          <h3 style="color:#6ab8ff;">📈 วิเคราะห์เชิงลึก (Analytics) — 5 กราฟ</h3>
+        </div>
+        <ul style="display:flex;flex-direction:column;gap:5px;">
+          <li>
+            <strong>TrendChart</strong> — Line Chart แนวโน้ม 6 เดือนล่าสุด<br/>
+            <span class="muted">แกน X: เดือน (เช่น ต.ค.–มี.ค.) &nbsp;|&nbsp; แกน Y: จำนวนที่พบความเสี่ยง<br/>
+            3 เส้นแยกสี: <span class="ac-y">ST-5</span> · <span class="ac-b">PHQ-A</span> · <span class="ac-g">CDI</span> — เห็นว่าช่วงไหนมีความเสี่ยงพุ่งสูง (เช่น ช่วงสอบ)</span>
+          </li>
+          <li>
+            <strong>MoMDeltaChart</strong> — Bar เปรียบเทียบเดือนนี้ vs เดือนก่อน<br/>
+            <span class="muted">Bar <span class="ac-r">แดง</span> = ความเสี่ยงเพิ่มขึ้น (น่าเป็นห่วง) &nbsp;|&nbsp; Bar <span class="ac-g">เขียว</span> = ลดลง (ดีขึ้น)<br/>
+            หน่วย: % การเปลี่ยนแปลง เช่น PHQ-A +12% หรือ CDI −5%</span>
+          </li>
+          <li>
+            <strong>SeverityChart</strong> — Doughnut สัดส่วน 4 ระดับความเสี่ยง<br/>
+            <span class="muted"><span class="ac-g">■ ปกติ</span> (ไม่ต้องดำเนินการ) &nbsp;·&nbsp; <span class="ac-y">■ เล็กน้อย</span> (ให้คำแนะนำ) &nbsp;·&nbsp;
+            <span style="color:#f39c12;">■ ปานกลาง</span> (ครูแนะแนวดูแล) &nbsp;·&nbsp; <span class="ac-r">■ รุนแรง</span> (ต้องดำเนินการทันที)<br/>
+            ตรงกลาง Doughnut = total นักเรียนที่ประเมินแล้วทั้งหมด</span>
+          </li>
+          <li>
+            <strong>AssessmentTypeChart</strong> — Stacked Bar แยกตามประเภทแบบประเมิน<br/>
+            <span class="muted">แกน X: ST-5 / PHQ-A / CDI &nbsp;|&nbsp; แต่ละ bar = สัดส่วน % ทุกระดับรวม 100%<br/>
+            เห็นได้ทันทีว่าแบบประเมินไหนพบความเสี่ยงระดับรุนแรงมากที่สุด</span>
+          </li>
+          <li>
+            <strong>RiskProgressBars</strong> — แถบ Progress 4 ระดับ พร้อมจำนวนและ %<br/>
+            <span class="muted">ปกติ: N คน (xx%) &nbsp;·&nbsp; เล็กน้อย: N คน &nbsp;·&nbsp; ปานกลาง: N คน &nbsp;·&nbsp; รุนแรง: N คน<br/>
+            กดที่แถบเพื่อ drill-down ดูรายชื่อนักเรียนในระดับนั้น</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Section D -->
+    <div>
+      <div class="dbsec" style="border-left:3px solid var(--purple);padding:13px 15px;">
+        <div class="dbsec-hd">
+          <span class="badge" style="background:rgba(155,89,182,.2);color:#c39bd3;padding:3px 12px;">D</span>
+          <h3 style="color:#c39bd3;">🏫 เปรียบเทียบองค์กร (Comparison)</h3>
+        </div>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:4px 0 4px;">OrgCompareChart — 100% Stacked Bar:</p>
+        <ul>
+          <li>ทุก bar ยาว <strong>100%</strong> เสมอ — เปรียบเทียบสัดส่วน % ได้ยุติธรรม ไม่ถูกบิดเบือนโดยขนาดโรงเรียน</li>
+          <li>โรงเรียนเล็ก 300 คน และโรงเรียนใหญ่ 3,000 คน เห็น % ที่เปรียบเทียบกันได้</li>
+          <li>สีแต่ละส่วน = ระดับความเสี่ยง 4 ระดับ (เขียว/เหลือง/ส้ม/แดง)</li>
+          <li>มองเห็นทันทีว่าองค์กรใดมี % สีแดง+ส้มมากกว่ากัน → ต้องให้ทรัพยากรเพิ่ม</li>
+        </ul>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:6px 0 4px;">Auto-grouping — เปลี่ยนอัตโนมัติตาม FilterBar:</p>
+        <table class="rtbl" style="font-size:.55em;">
+          <thead>
+            <tr><th>FilterBar ที่เลือก</th><th>Group By</th><th>ตัวอย่างที่แสดง</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ไม่กรอง (ทั้งจังหวัด)</td><td class="hl">สังกัด</td><td>สพฐ. / สอศ. / สช. / สกร. (4 bars)</td></tr>
+            <tr><td>เลือก affiliation</td><td class="hl">อำเภอ</td><td>14 อำเภอในจังหวัดเลย</td></tr>
+            <tr><td>เลือก district</td><td class="hl">โรงเรียน</td><td>ทุกโรงเรียนในอำเภอที่เลือก</td></tr>
+          </tbody>
+        </table>
+
+        <p style="font-size:.59em;font-weight:700;color:#f8d87a;margin:6px 0 3px;">ประโยชน์เชิงนโยบาย:</p>
+        <ul>
+          <li>ระบุโรงเรียน/อำเภอที่ต้องการนักจิตวิทยาหรือทรัพยากรเพิ่ม</li>
+          <li>เปรียบเทียบก่อน-หลังโครงการแทรกแซง</li>
+          <li>ใช้รายงานต่อผู้บริหารระดับสูงและส่วนกลางได้ทันที</li>
+        </ul>
+
+        <div class="note" style="margin-top:8px;">
+          <p>ปุ่ม <strong>↓ PNG</strong> ทุก chart — ดาวน์โหลดกราฟแยกชิ้นสำหรับใช้ใน Presentation หรือรายงาน</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ S10 กรองข้อมูล / Export / รายงานรายบุคคล ══════════════════ -->
+<section>
+  <span class="slbl">กรองข้อมูล / Export / Reports</span>
+  <h2>กรองข้อมูล &amp; ส่งออก &amp; รายงานรายบุคคล</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.5em;gap:20px;align-items:start;">
+
+    <div>
+      <p style="font-size:.7em;font-weight:600;color:var(--teal2);margin-bottom:8px;">🔍 FilterBar — 9 พารามิเตอร์ (ทุก chart อัปเดตพร้อมกัน):</p>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div class="card card-t" style="padding:9px 12px;">
+          <p style="margin:0;font-size:.63em;"><strong>รอบสำรวจ</strong> — survey_round_id: เลือกดูเฉพาะรอบที่ต้องการ</p>
+        </div>
+        <div class="card card-b" style="padding:9px 12px;">
+          <p style="margin:0;font-size:.63em;"><strong>สังกัด → อำเภอ → โรงเรียน</strong> — affiliation_id / district_id / school_id<br/>
+          <span class="muted">Hierarchical: เลือกสังกัด → district อัปเดต → school อัปเดต อัตโนมัติ</span></p>
+        </div>
+        <div class="card card-g" style="padding:9px 12px;">
+          <p style="margin:0;font-size:.63em;"><strong>ประเภทแบบประเมิน</strong> — assessment_type: ST-5 / PHQ-A / CDI</p>
+        </div>
+        <div class="card card-y" style="padding:9px 12px;">
+          <p style="margin:0;font-size:.63em;"><strong>ชั้นเรียน / เพศ / ช่วงวันที่</strong> — grade / gender / date_from / date_to</p>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:12px;">
+        <p style="font-size:.62em;font-weight:600;color:var(--teal2);margin-bottom:5px;">📋 หน้า /admin/reports — รายงานรายบุคคล:</p>
+        <p style="font-size:.6em;">คอลัมน์: วันที่เข้าทำ · ประเภท · นักเรียน · ชั้น/ห้อง · โรงเรียน · คะแนน · ระดับ · <span class="ac-r">⚑ suicide_risk</span></p>
+        <p style="font-size:.6em;margin-top:3px;">50 รายการ/หน้า · Pagination · กรองด้วย FilterBar เดียวกัน</p>
+      </div>
+    </div>
+
+    <div>
+      <p style="font-size:.7em;font-weight:600;color:var(--teal2);margin-bottom:8px;">📤 ส่งออกข้อมูล — 4 รูปแบบ:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="card card-r" style="padding:11px 14px;">
+          <h3 style="font-size:.68em;">📄 PDF — <code>lemcs_report.pdf</code></h3>
+          <p>รายงานสรุปพร้อม chart ทั้งหมดของข้อมูลที่กรองแล้ว</p>
+        </div>
+        <div class="card card-g" style="padding:11px 14px;">
+          <h3 style="font-size:.68em;">📊 Excel — <code>lemcs_report.xlsx</code></h3>
+          <p>ข้อมูลแบบตาราง วิเคราะห์เพิ่มเติมด้วย Excel / SPSS ได้</p>
+        </div>
+        <div class="card card-t" style="padding:11px 14px;">
+          <h3 style="font-size:.68em;">🖼️ PNG per chart (DownloadBtn)</h3>
+          <p>ปุ่ม <strong>↓ PNG</strong> ทุก chart — ดาวน์โหลดกราฟแยกชิ้นเพื่อใช้ใน Presentation</p>
+        </div>
+        <div class="card card-b" style="padding:11px 14px;">
+          <h3 style="font-size:.68em;">🖨️ Print Dashboard</h3>
+          <p>Print ทั้งหน้า — ซ่อน Sidebar / NavBar อัตโนมัติเมื่อสั่งพิมพ์</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ══ S11 ระบบแจ้งเตือน ══════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ระบบแจ้งเตือน</span>
+  <h2>ระบบแจ้งเตือนความเสี่ยง — Crisis Alert</h2>
+  <div class="div"></div>
+  <div class="twocol" style="margin-top:.6em;gap:22px;">
+    <div>
+      <p style="font-size:.75em;color:#c8daf0;line-height:1.8;"><strong>เงื่อนไขที่ trigger Alert:</strong></p>
+      <ul style="margin-top:.3em;">
+        <li>PHQ-A ข้อ 9 (Q9) ≥ 1 คะแนน</li>
+        <li>PHQ-A Bonus Q1 หรือ BQ2 = true</li>
+        <li>CDI คะแนนรวม ≥ 15</li>
+      </ul>
+      <p style="font-size:.75em;color:#c8daf0;line-height:1.8;margin-top:.8em;"><strong>กระบวนการ (Synchronous — ไม่ผ่านคิว):</strong></p>
+      <div style="margin-top:.4em;display:flex;flex-direction:column;gap:8px;">
+        <div class="lstep">
+          <div class="lnum" style="background:var(--red);">1</div>
+          <div class="lbody"><h3>ตรวจพบหลังส่งแบบประเมิน</h3><p>สร้าง Critical Alert record ทันที พร้อม timestamp</p></div>
+        </div>
+        <div class="lstep">
+          <div class="lnum" style="background:var(--teal);">2</div>
+          <div class="lbody"><h3>แจ้งเตือนใน Dashboard ทุกระดับ</h3><p>ครู → ผู้บริหารอำเภอ → จังหวัด เห็นพร้อมกัน</p></div>
+        </div>
+        <div class="lstep">
+          <div class="lnum" style="background:var(--green);">3</div>
+          <div class="lbody"><h3>หน้าจอนักเรียน</h3><p>แสดงสายด่วนสุขภาพจิต <strong>1323</strong> และคำแนะนำทันที</p></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="card card-r">
+        <h3>🚨 In-App Alert Dashboard</h3>
+        <ul>
+          <li>รายการ Alert ทั้งหมดพร้อมสถานะ</li>
+          <li>สถานะ: รอดำเนินการ / กำลังดูแล / เสร็จสิ้น</li>
+          <li>บันทึกผู้รับผิดชอบและวันที่ดำเนินการ</li>
+          <li>Alert Status Summary — ดูภาพรวมตัวเลข</li>
+        </ul>
+      </div>
+      <div class="card card-t">
+        <h3>🆘 สายด่วน 1323</h3>
+        <p>แสดงบนหน้าจอนักเรียนทันทีที่พบ suicide_risk = true<br/>กรมสุขภาพจิต — บริการ 24 ชั่วโมง</p>
+      </div>
+      <div class="note">
+        <p>Alert ใน Dashboard อัปเดตทุก <strong>30 วินาที</strong> โดยไม่ต้อง Refresh หน้า</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S12 ความปลอดภัย PDPA ══════════════════════════════════════ -->
+<section>
+  <span class="slbl">ความปลอดภัย</span>
+  <h2>ความปลอดภัยและ PDPA Compliance</h2>
+  <div class="div"></div>
+  <div class="grid3" style="margin-top:.7em;">
+    <div class="card card-t">
+      <span class="cicon">🔐</span>
+      <h3>AES-256 Encryption</h3>
+      <ul>
+        <li>เลขบัตรประชาชนเข้ารหัสทุก record</li>
+        <li>ไม่ปรากฏใน URL, Log, หรือ plain text</li>
+        <li>Key ต้องยาว 32 ตัวอักษร (256-bit)</li>
+        <li>ระบบ crash ถ้า Key ไม่ครบ</li>
+      </ul>
+    </div>
+    <div class="card card-g">
+      <span class="cicon">✅</span>
+      <h3>PDPA Consent</h3>
+      <ul>
+        <li>Modal บังคับก่อนทำแบบประเมินครั้งแรก</li>
+        <li>บันทึก + Timestamp ที่ยินยอม</li>
+        <li>ปฏิเสธ = ออกจากระบบทันที</li>
+        <li>ดูนโยบายฯ ได้จากหน้า Login</li>
+      </ul>
+    </div>
+    <div class="card card-b">
+      <span class="cicon">📋</span>
+      <h3>Audit Log</h3>
+      <ul>
+        <li>บันทึกทุกการเข้าถึงข้อมูลนักเรียน</li>
+        <li>เก็บ user_id + timestamp + action</li>
+        <li>Admin ดู Audit Log ผ่านหน้า /admin/audit-logs</li>
+        <li>รองรับการตรวจสอบ PDPA</li>
+      </ul>
+    </div>
+    <div class="card card-y">
+      <span class="cicon">🛡️</span>
+      <h3>Session Security</h3>
+      <ul>
+        <li>นักเรียน: JWT 60 นาที</li>
+        <li>Admin ทุกระดับ: JWT 8 ชั่วโมง</li>
+        <li>Rate limit 100 req/นาที ต่อ IP</li>
+      </ul>
+    </div>
+    <div class="card card-p">
+      <span class="cicon">🚫</span>
+      <h3>No PII in URL</h3>
+      <ul>
+        <li>ชื่อ / เลขบัตร ไม่ปรากฏใน URL path</li>
+        <li>ทุก endpoint ใช้ UUID เท่านั้น</li>
+        <li>ป้องกัน expose ผ่าน Browser history</li>
+      </ul>
+    </div>
+    <div class="card card-r">
+      <span class="cicon">🔄</span>
+      <h3>Backup อัตโนมัติ</h3>
+      <ul>
+        <li>pg_dump ทุกวัน เวลา 02:00</li>
+        <li>ส่งไป MinIO Object Storage</li>
+        <li>รองรับ Point-in-time Recovery</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S13 สถาปัตยกรรม ════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">สถาปัตยกรรม</span>
+  <h2>สถาปัตยกรรมระบบ</h2>
+  <div class="div"></div>
+  <div style="margin-top:.7em;display:flex;flex-direction:column;gap:10px;">
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;">
+      <span style="font-size:.55em;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;min-width:80px;">Frontend</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="pill pill-t">Next.js 14 App Router</span>
+        <span class="pill pill-t">TypeScript</span>
+        <span class="pill pill-t">Tailwind + DaisyUI</span>
+        <span class="pill pill-t">Chart.js</span>
+        <span class="pill pill-t">SWR</span>
+        <span class="pill pill-t">next-pwa (Offline)</span>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;">
+      <span style="font-size:.55em;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;min-width:80px;">Backend</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="pill pill-b">FastAPI Python 3.12</span>
+        <span class="pill pill-b">SQLAlchemy Async</span>
+        <span class="pill pill-b">Alembic</span>
+        <span class="pill pill-b">Celery</span>
+        <span class="pill pill-b">JWT Auth</span>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;">
+      <span style="font-size:.55em;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;min-width:80px;">Data</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="pill pill-g">PostgreSQL 16</span>
+        <span class="pill pill-g">PgBouncer</span>
+        <span class="pill pill-g">Redis 7 (Cache/Session)</span>
+        <span class="pill pill-g">MinIO (Storage)</span>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:14px;">
+      <span style="font-size:.55em;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;min-width:80px;">Infra</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <span class="pill pill-y">Docker Compose</span>
+        <span class="pill pill-y">Nginx Proxy Manager</span>
+        <span class="pill pill-y">Grafana</span>
+        <span class="pill pill-y">Portainer</span>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:12px;"><p>🌐 Production: <strong>lemcs.loeitech.ac.th</strong> &nbsp;·&nbsp; API: <strong>api-lemcs.loeitech.ac.th</strong> &nbsp;·&nbsp; Grafana: <strong>grafana-lemcs.loeitech.ac.th</strong></p></div>
+</section>
+
+<!-- ══ S14 ตัวเลขสำคัญ ════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ตัวเลข</span>
+  <h2>LEMCS ในตัวเลข</h2>
+  <div class="div"></div>
+  <div class="grid4" style="margin-top:.9em;">
+    <div class="statbox"><span class="statnum">100,000+</span><span class="statlbl">นักเรียนในระบบ</span></div>
+    <div class="statbox"><span class="statnum">3</span><span class="statlbl">แบบประเมินมาตรฐาน</span></div>
+    <div class="statbox"><span class="statnum">2</span><span class="statlbl">สังกัด (สพฐ. / สกร.)</span></div>
+    <div class="statbox"><span class="statnum">5</span><span class="statlbl">ระดับ RBAC</span></div>
+  </div>
+  <div class="grid4" style="margin-top:14px;">
+    <div class="statbox"><span class="statnum">4</span><span class="statlbl">Section ใน Dashboard</span></div>
+    <div class="statbox"><span class="statnum">AES-256</span><span class="statlbl">เข้ารหัสข้อมูล</span></div>
+    <div class="statbox"><span class="statnum">PWA</span><span class="statlbl">ใช้งาน Offline ได้</span></div>
+    <div class="statbox"><span class="statnum">60s</span><span class="statlbl">Auto-refresh Dashboard</span></div>
+  </div>
+  <div class="note" style="margin-top:14px;"><p>ฐานข้อมูลแยก Schema ต่อจังหวัด (Multi-tenant) &nbsp;·&nbsp; ตาราง assessments แบ่ง Partition ตามปี &nbsp;·&nbsp; Backup อัตโนมัติทุกวัน 02:00</p></div>
+</section>
+
+<!-- ══ S15 ประโยชน์ ════════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">ประโยชน์</span>
+  <h2>ประโยชน์ที่จังหวัดเลยได้รับ</h2>
+  <div class="div"></div>
+  <div class="grid3" style="margin-top:.7em;">
+    <div class="card card-t">
+      <span class="cicon">⚡</span>
+      <h3>ลดเวลาประเมิน</h3>
+      <p>จากกระดาษหลายวัน → ออนไลน์ทันที ผลรู้ทันที Admin เห็นทั้งจังหวัดในหน้าเดียว</p>
+    </div>
+    <div class="card card-g">
+      <span class="cicon">🔭</span>
+      <h3>เห็นภาพจังหวัด</h3>
+      <p>4 Section Dashboard อัปเดตอัตโนมัติ เปรียบเทียบสังกัด/อำเภอ/โรงเรียนได้ทันที</p>
+    </div>
+    <div class="card card-r">
+      <span class="cicon">🛡️</span>
+      <h3>ไม่พลาดวิกฤต</h3>
+      <p>Alert แจ้งเตือนทันทีใน Dashboard นักเรียนเห็นสายด่วน 1323 บนหน้าจอ</p>
+    </div>
+    <div class="card card-y">
+      <span class="cicon">📁</span>
+      <h3>ถูกกฎหมาย PDPA</h3>
+      <p>AES-256 เข้ารหัสข้อมูลส่วนตัว Audit Log ทุกการเข้าถึง ลดความเสี่ยงทางกฎหมาย</p>
+    </div>
+    <div class="card card-p">
+      <span class="cicon">📈</span>
+      <h3>ข้อมูลเชิงนโยบาย</h3>
+      <p>Export PDF/Excel กราฟ Trend 6 เดือน รองรับรายงานระดับจังหวัดและส่วนกลาง</p>
+    </div>
+    <div class="card card-b">
+      <span class="cicon">📡</span>
+      <h3>ครอบคลุมห่างไกล</h3>
+      <p>Offline PWA ทำแบบประเมินได้แม้ไม่มีอินเตอร์เน็ต Sync อัตโนมัติเมื่อกลับออนไลน์</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S16 Roadmap ════════════════════════════════════════════════ -->
+<section>
+  <span class="slbl">แผนงาน</span>
+  <h2>Roadmap — แผนดำเนินการ</h2>
+  <div class="div"></div>
+  <div class="grid4" style="margin-top:.7em;">
+    <div class="card card-g" style="border-top:3px solid var(--green);border-left:none;">
+      <p style="font-size:.5em;font-weight:700;color:var(--green);background:rgba(46,204,113,.12);padding:2px 10px;border-radius:100px;display:inline-block;margin-bottom:6px;">✓ เสร็จแล้ว</p>
+      <h3 style="color:var(--white);">Phase 1–3: ระบบหลัก</h3>
+      <ul>
+        <li>Backend API ครบ</li>
+        <li>Auth (Bypass Login)</li>
+        <li>แบบประเมิน 3 ชุด</li>
+        <li>Admin Dashboard 4 Section</li>
+        <li>Import CSV นักเรียน</li>
+        <li>Frontend ทุกหน้า</li>
+        <li>Offline PWA</li>
+      </ul>
+    </div>
+    <div class="card card-t" style="border-top:3px solid var(--teal);border-left:none;">
+      <p style="font-size:.5em;font-weight:700;color:var(--teal);background:rgba(0,201,177,.12);padding:2px 10px;border-radius:100px;display:inline-block;margin-bottom:6px;">⏳ กำลังพัฒนา</p>
+      <h3 style="color:var(--white);">Phase 4: Alerts & Reports</h3>
+      <ul>
+        <li>Alert System ครบวงจร</li>
+        <li>Report Export PDF/Excel</li>
+        <li>Recommendation Engine</li>
+        <li>System integration test</li>
+        <li>UAT กับผู้ใช้จริง</li>
+      </ul>
+    </div>
+    <div class="card card-b" style="border-top:3px solid var(--blue);border-left:none;">
+      <p style="font-size:.5em;font-weight:700;color:var(--blue);background:rgba(30,144,255,.12);padding:2px 10px;border-radius:100px;display:inline-block;margin-bottom:6px;">📋 ถัดไป</p>
+      <h3 style="color:var(--white);">Phase 5: Pilot & Roll-out</h3>
+      <ul>
+        <li>ทดสอบ 3–5 โรงเรียนนำร่อง</li>
+        <li>เก็บ Feedback</li>
+        <li>อบรมครูแนะแนว</li>
+        <li>Import นักเรียนทั้งจังหวัด</li>
+        <li>Go-live + Monitor 30 วัน</li>
+      </ul>
+    </div>
+    <div class="card card-y" style="border-top:3px solid var(--yellow);border-left:none;">
+      <p style="font-size:.5em;font-weight:700;color:var(--yellow);background:rgba(240,192,64,.12);padding:2px 10px;border-radius:100px;display:inline-block;margin-bottom:6px;">🔮 อนาคต</p>
+      <h3 style="color:var(--white);">Phase 6: ขยาย</h3>
+      <ul>
+        <li>รองรับหลายจังหวัด</li>
+        <li>AI Recommendations</li>
+        <li>API เชื่อมสาธารณสุข</li>
+        <li>BI Dashboard ระดับประเทศ</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══ S17 Thank You ══════════════════════════════════════════════ -->
+<section class="ty">
+  <div style="position:relative;z-index:1;">
+    <p class="muted" style="letter-spacing:.15em;text-transform:uppercase;font-size:.5em;margin-bottom:.7em;">ขอบคุณ</p>
+    <h1 style="font-size:2.8em;text-align:center;" class="ac">LEMCS</h1>
+    <p style="text-align:center;font-size:.76em;color:#8fa3bc;margin-top:.3em;">ระบบดิจิทัลประเมินสุขภาพจิตนักเรียน จังหวัดเลย</p>
+    <div style="width:56px;height:2px;background:linear-gradient(90deg,var(--teal),var(--blue));margin:1.4em auto;border-radius:2px;"></div>
+    <div class="grid2" style="max-width:600px;margin:0 auto;text-align:left;">
+      <div class="card card-t"><h3>🌐 เว็บไซต์</h3><p>lemcs.loeitech.ac.th</p></div>
+      <div class="card card-b"><h3>🔧 API Docs</h3><p>api-lemcs.loeitech.ac.th/docs</p></div>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:2em;font-size:.44em;">พัฒนาเพื่อนักเรียนจังหวัดเลยกว่า 100,000 คน &nbsp;·&nbsp; พ.ศ. 2568</p>
+  </div>
+</section>
+
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true, slideNumber: 'c/t', progress: true, controls: true,
+    transition: 'fade', transitionSpeed: 'fast', backgroundTransition: 'fade',
+    center: false, width: 1280, height: 720, margin: 0,
+    minScale: 0.3, maxScale: 2.0,
+    keyboard: { 70: function() { Reveal.toggleFullscreen(); } }
+  });
+</script>
+</body>
+</html>

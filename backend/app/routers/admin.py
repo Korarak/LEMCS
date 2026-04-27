@@ -433,6 +433,7 @@ class StudentCreate(BaseModel):
     grade: str | None = None
     classroom: str | None = None
     school_id: int
+    national_id: str | None = None
 
 class StudentUpdate(BaseModel):
     title: str | None = None
@@ -449,6 +450,8 @@ async def create_student(
     current_user = Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.import_service import normalize_national_id
+
     stu = Student(
         student_code=body.student_code,
         title=body.title,
@@ -460,6 +463,18 @@ async def create_student(
         school_id=body.school_id,
         is_active=True,
     )
+
+    if body.national_id and body.national_id.strip():
+        nid, err = normalize_national_id(body.national_id.strip())
+        if err:
+            raise HTTPException(400, f"เลขบัตรประชาชนไม่ถูกต้อง: {err}")
+        new_hash = hash_pii(nid)
+        dup = await db.execute(select(Student).where(Student.national_id_hash == new_hash))
+        if dup.scalar_one_or_none():
+            raise HTTPException(409, "เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว")
+        stu.national_id = encrypt_pii(nid)
+        stu.national_id_hash = new_hash
+
     db.add(stu)
     await db.commit()
     await db.refresh(stu)

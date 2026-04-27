@@ -60,7 +60,7 @@ const TITLE_GENDER: Record<string, string> = {
   "เด็กหญิง": "หญิง", "นางสาว": "หญิง", "นาง": "หญิง",
 };
 
-const INIT_FORM = { student_code: "", title: "นาย", first_name: "", last_name: "", gender: "ชาย", grade: "ม.1", classroom: "1", school_id: "" };
+const INIT_FORM = { student_code: "", title: "นาย", first_name: "", last_name: "", gender: "ชาย", grade: "ม.1", classroom: "1", school_id: "", national_id: "" };
 const PAGE_SIZE = 20;
 
 function useDebounce(value: string, delay: number) {
@@ -218,7 +218,7 @@ export default function StudentsPage() {
     setForm({ student_code: s.student_code, title: s.title || "นาย",
       first_name: s.first_name, last_name: s.last_name,
       gender: s.gender || "ชาย", grade: s.grade || "ม.1", classroom: s.classroom || "1",
-      school_id: s.school_id?.toString() || "" });
+      school_id: s.school_id?.toString() || "", national_id: "" });
     setModal("edit");
   };
 
@@ -226,11 +226,21 @@ export default function StudentsPage() {
     if (!form.student_code || !form.first_name || !form.last_name) {
       toast("กรุณากรอกข้อมูลที่จำเป็น", "warning"); return;
     }
+    if (modal === "add" && form.national_id.trim()) {
+      const err = validateThaiId(form.national_id);
+      if (err) { toast(`เลขบัตรประชาชน: ${err}`, "warning"); return; }
+    }
     setSaving(true);
     try {
-      const body = { ...form, school_id: form.school_id ? Number(form.school_id) : undefined };
-      if (modal === "add") await api.post("/admin/students", body);
-      else if (editing)    await api.put(`/admin/students/${editing.id}`, body);
+      const body: Record<string, unknown> = { ...form, school_id: form.school_id ? Number(form.school_id) : undefined };
+      if (modal === "add") {
+        if (!form.national_id.trim()) delete body.national_id;
+        else body.national_id = form.national_id.replace(/[-\s]/g, "");
+        await api.post("/admin/students", body);
+      } else if (editing) {
+        const { national_id: _nid, ...editBody } = body;
+        await api.put(`/admin/students/${editing.id}`, editBody);
+      }
       setModal(null); mutate(swrKey);
       toast(modal === "add" ? "เพิ่มนักเรียนสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
     } catch (e: any) {
@@ -572,6 +582,24 @@ export default function StudentsPage() {
                 <label className="label"><span className="label-text">ห้อง</span></label>
                 <input className="input input-bordered" value={form.classroom} onChange={e => setForm({...form, classroom: e.target.value})}/>
               </div>
+              {modal === "add" && (
+                <div className="form-control col-span-2">
+                  <label className="label">
+                    <span className="label-text">เลขบัตรประชาชน</span>
+                    <span className="label-text-alt text-base-content/40">ไม่บังคับ</span>
+                  </label>
+                  <input
+                    className="input input-bordered font-mono tracking-widest"
+                    placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
+                    value={form.national_id}
+                    maxLength={17}
+                    onChange={e => setForm({...form, national_id: e.target.value})}
+                  />
+                  <label className="label">
+                    <span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="modal-action">
               <button className="btn btn-ghost" onClick={() => setModal(null)}>ยกเลิก</button>
