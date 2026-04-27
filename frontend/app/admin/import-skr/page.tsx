@@ -53,12 +53,6 @@ interface ImportResult {
   summary: ImportSummary;
 }
 
-interface Affiliation {
-  id: number;
-  name: string;
-}
-
-
 interface School {
   id: number;
   name: string;
@@ -66,7 +60,114 @@ interface School {
   student_count?: number;
 }
 
+// ─── Per-sheet searchable school picker ───────────────────────────
+function SchoolPicker({
+  options, value, onChange,
+}: {
+  options: School[];
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const selected = options.find(s => s.id === value) ?? null;
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options.slice(0, 8);
+    const q = search.trim().toLowerCase();
+    return options.filter(s => s.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [options, search]);
+
+  if (options.length === 0) {
+    return <span className="text-xs text-error">ไม่มีโรงเรียน สกร. ในระบบ — กรุณาสร้างก่อน</span>;
+  }
+
+  if (selected && !open) {
+    return (
+      <div className="flex items-center gap-1.5 flex-1">
+        <span className="text-success text-xs font-medium flex-1 truncate">✅ {selected.name}</span>
+        <button type="button" className="btn btn-ghost btn-xs text-base-content/40 shrink-0"
+          onClick={() => { onChange(null); setSearch(""); setOpen(true); }}>
+          เปลี่ยน
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex-1">
+      <input
+        type="text"
+        autoComplete="off"
+        autoFocus={open}
+        placeholder={`🔍 พิมพ์ชื่อโรงเรียน สกร. (${options.length} แห่ง)`}
+        className={`input input-bordered input-xs w-full ${!value ? "input-warning" : "input-success"}`}
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-30 w-full bg-base-100 border border-base-200 rounded-xl shadow-lg mt-0.5 max-h-44 overflow-y-auto">
+          {filtered.map(s => (
+            <li key={s.id}
+              className="px-3 py-1.5 hover:bg-primary/10 cursor-pointer text-xs transition-colors"
+              onMouseDown={e => { e.preventDefault(); onChange(s.id); setSearch(""); setOpen(false); }}>
+              {s.name}
+            </li>
+          ))}
+          {options.filter(s => s.name.toLowerCase().includes(search.trim().toLowerCase())).length > 8 && (
+            <li className="px-3 py-1 text-xs text-base-content/30 text-center border-t border-base-200">
+              พิมพ์เพิ่มเพื่อกรอง
+            </li>
+          )}
+        </ul>
+      )}
+      {open && search.trim() && filtered.length === 0 && (
+        <div className="absolute z-30 w-full bg-base-100 border border-base-200 rounded-xl shadow-lg mt-0.5 px-3 py-2 text-xs text-base-content/50">
+          ไม่พบโรงเรียนที่ตรงกับ "{search}"
+        </div>
+      )}
+    </div>
+  );
+}
+
 type Step = 1 | 2 | 3;
+
+// ─── Fuzzy suggest ────────────────────────────────────────────────
+
+function fuzzyScore(query: string, candidate: string): number {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/\s+/g, "").replace(/^โรงเรียน/, "");
+  const q = norm(query);
+  const c = norm(candidate);
+  if (!q || !c) return 0;
+  if (q === c) return 100;
+  if (c.includes(q)) return Math.round(80 * q.length / c.length);
+  if (q.includes(c)) return Math.round(80 * c.length / q.length);
+  const bgSet = (s: string) => {
+    const set = new Set<string>();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    return set;
+  };
+  const bq = bgSet(q);
+  const bc = bgSet(c);
+  let common = 0;
+  bq.forEach(b => { if (bc.has(b)) common++; });
+  const total = bq.size + bc.size;
+  return total === 0 ? 0 : Math.round(100 * 2 * common / total);
+}
+
+function topSuggest(query: string, candidates: School[], n = 3): School[] {
+  if (!query.trim()) return [];
+  return candidates
+    .map(s => ({ school: s, score: fuzzyScore(query, s.name) }))
+    .filter(x => x.score > 20)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map(x => x.school);
+}
 
 // ─── Step Bar ─────────────────────────────────────────────────────
 function StepBar({ step }: { step: Step }) {
@@ -92,13 +193,15 @@ function StepBar({ step }: { step: Step }) {
 
 // ─── Sheet Card ───────────────────────────────────────────────────
 function SheetCard({
-  sheet,
-  selected,
-  onToggle,
+  sheet, selected, onToggle, schoolOptions, schoolId, onSchoolChange, suggestions,
 }: {
   sheet: SheetInfo;
   selected: boolean;
   onToggle: () => void;
+  schoolOptions: School[];
+  schoolId: number | null;
+  onSchoolChange: (id: number | null) => void;
+  suggestions: School[];
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -106,7 +209,7 @@ function SheetCard({
     <div
       className={`border rounded-xl transition-all ${
         selected
-          ? "border-primary bg-primary/5 shadow-sm"
+          ? schoolId ? "border-success bg-success/5 shadow-sm" : "border-warning bg-warning/5 shadow-sm"
           : "border-base-200 bg-base-100"
       }`}
     >
@@ -125,8 +228,8 @@ function SheetCard({
             </span>
           </div>
         </div>
-        <span className={`badge badge-sm ${selected ? "badge-primary" : "badge-ghost"}`}>
-          {selected ? "เลือกแล้ว" : "ไม่เลือก"}
+        <span className={`badge badge-sm ${selected ? (schoolId ? "badge-success" : "badge-warning") : "badge-ghost"}`}>
+          {selected ? (schoolId ? "พร้อม" : "ยังไม่ระบุ รร.") : "ไม่เลือก"}
         </span>
         {sheet.preview.length > 0 && (
           <button
@@ -145,6 +248,35 @@ function SheetCard({
           </button>
         )}
       </div>
+
+      {/* School mapping row — แสดงเฉพาะเมื่อ selected */}
+      {selected && (
+        <div className="px-4 pb-3 flex items-center gap-2 border-t border-base-200 pt-2.5">
+          <span className="text-xs text-base-content/50 shrink-0">📌 โรงเรียนปลายทาง</span>
+          <SchoolPicker options={schoolOptions} value={schoolId} onChange={onSchoolChange} />
+          {selected && !schoolId && schoolOptions.length > 0 && (
+            <span className="text-xs text-warning shrink-0">⚠️ จำเป็น</span>
+          )}
+        </div>
+      )}
+
+      {/* Suggestions — แสดงเมื่อ selected และมี top matches */}
+      {selected && suggestions.length > 0 && (
+        <div className="px-4 pb-3 flex items-center gap-1.5 flex-wrap border-t border-base-200/60 pt-2">
+          <span className="text-xs text-base-content/40 shrink-0">💡 แนะนำ:</span>
+          {suggestions.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              className={`btn btn-xs ${schoolId === s.id ? "btn-success" : "btn-ghost"}`}
+              onClick={() => onSchoolChange(s.id)}
+            >
+              {s.name}
+              {schoolId === s.id && " ✓"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {expanded && sheet.preview.length > 0 && (
         <div className="px-4 pb-4 overflow-x-auto">
@@ -248,9 +380,9 @@ export default function ImportSkrPage() {
   const [result, setResult]           = useState<ImportResult | null>(null);
   const [dragOver, setDragOver]       = useState(false);
 
-  // Affiliation selector
-  const [affiliations, setAffiliations] = useState<Affiliation[]>([]);
-  const [selectedAffId, setSelectedAffId] = useState<number | "">("");
+  // Sheet → School mapping
+  const [schoolMap, setSchoolMap] = useState<Record<string, number>>({});
+  const [suggestionsMap, setSuggestionsMap] = useState<Record<string, School[]>>({});
 
   // Truncate by school
   const [skrSchools,       setSkrSchools]       = useState<School[]>([]);
@@ -261,7 +393,6 @@ export default function ImportSkrPage() {
 
 
   useEffect(() => {
-    api.get("/admin/affiliations").then(r => setAffiliations(r.data)).catch(() => {});
     api.get("/admin/schools/stats").then(r => {
       const all: School[] = r.data;
       setSkrSchools(all.filter(s => s.school_type === "สกร."));
@@ -310,6 +441,19 @@ export default function ImportSkrPage() {
       });
       setPreview(data);
       setSelected(new Set(data.sheets.map((s) => s.name)));
+      // auto-suggest: หาโรงเรียนที่ชื่อตรงกับชื่ออำเภอในไฟล์
+      const autoMap: Record<string, number> = {};
+      const sugMap: Record<string, School[]> = {};
+      for (const sheet of data.sheets) {
+        const short = sheet.name.replace(/^อ\.|^อำเภอ\s*/, "").trim();
+        const suggestions = topSuggest(short, skrSchools, 3);
+        sugMap[sheet.name] = suggestions;
+        const match = skrSchools.find(s => s.name.toLowerCase().includes(short.toLowerCase()));
+        if (match) autoMap[sheet.name] = match.id;
+        else if (suggestions.length > 0) autoMap[sheet.name] = suggestions[0].id;
+      }
+      setSchoolMap(autoMap);
+      setSuggestionsMap(sugMap);
       setStep(2);
     } catch (err: any) {
       showToast(err?.response?.data?.detail || "อ่านไฟล์ไม่สำเร็จ", "error");
@@ -344,14 +488,21 @@ export default function ImportSkrPage() {
     .reduce((sum, s) => sum + s.total_rows, 0) ?? 0;
 
   // ── Step 2 → 3: Confirm import ──────────────────────────────
+  const unmappedSheets = Array.from(selected).filter(s => !schoolMap[s]);
+
   const handleImport = async () => {
     if (!fileBytes || selected.size === 0) return;
+    if (unmappedSheets.length > 0) {
+      showToast(`กรุณาเลือกโรงเรียนปลายทางให้ครบ — ยังไม่ได้ระบุ ${unmappedSheets.length} อำเภอ`, "warning");
+      return;
+    }
     setImporting(true);
     const blob = new Blob([fileBytes], { type: "application/vnd.ms-excel" });
     const form = new FormData();
     form.append("file", blob, fileName);
     form.append("selected_sheets", JSON.stringify(Array.from(selected)));
-    if (selectedAffId) form.append("affiliation_id", String(selectedAffId));
+    const mapForSelected = Object.fromEntries(Array.from(selected).map(s => [s, schoolMap[s]]));
+    form.append("school_map", JSON.stringify(mapForSelected));
     try {
       const { data } = await api.post<ImportResult>("/admin/import/skr-confirm", form, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -376,7 +527,8 @@ export default function ImportSkrPage() {
     setPreview(null);
     setSelected(new Set());
     setResult(null);
-    setSelectedAffId("");
+    setSchoolMap({});
+    setSuggestionsMap({});
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -433,7 +585,7 @@ export default function ImportSkrPage() {
                   <p className="font-semibold">ข้อมูลที่นำเข้า</p>
                   <p className="text-xs mt-0.5">
                     ระบบจะนำเข้า: รหัสนักศึกษา, ชื่อ-นามสกุล, เพศ, วันเกิด, วุฒิการศึกษา
-                    และสร้างโรงเรียน สกร.อำเภอ ให้อัตโนมัติหากยังไม่มีในระบบ
+                    — ต้อง<a href="/admin/schools" className="underline font-medium">สร้างโรงเรียน สกร.</a>ก่อน แล้วค่อย import
                   </p>
                 </div>
               </div>
@@ -461,42 +613,33 @@ export default function ImportSkrPage() {
                 </div>
               </div>
 
-              {/* Affiliation selector */}
-              <div className="card bg-base-100 border border-base-200 shadow-sm">
-                <div className="card-body p-4 space-y-2">
-                  <h2 className="font-semibold text-sm">🏛️ สังกัดปลายทาง</h2>
-                  <p className="text-xs text-base-content/50">
-                    ระบบจะสร้างโรงเรียน <span className="font-medium text-base-content/70">สกร.อำเภอ...</span> ในสังกัดที่เลือก
-                    หากไม่เลือก ระบบจะค้นหาอำเภอโดยไม่กรองสังกัด
-                  </p>
-                  <select
-                    className={`select select-bordered select-sm w-full sm:w-80 ${
-                      selectedAffId ? "select-success border-success/50 bg-success/5" : "select-warning border-warning/50 bg-warning/5"
-                    }`}
-                    value={selectedAffId}
-                    onChange={(e) => setSelectedAffId(Number(e.target.value) || "")}
-                  >
-                    <option value="">— ไม่ระบุสังกัด (ค้นหาทุกสังกัด) —</option>
-                    {affiliations.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                  {selectedAffId && (
-                    <p className="text-xs text-success font-medium">
-                      ✅ โรงเรียน สกร.อำเภอ จะถูกสร้างใน {affiliations.find(a => a.id === selectedAffId)?.name}
+              {/* No SKR schools warning */}
+              {skrSchools.length === 0 && (
+                <div className="alert alert-error text-sm">
+                  <span>⚠️</span>
+                  <div>
+                    <p className="font-semibold">ยังไม่มีโรงเรียน สกร. ในระบบ</p>
+                    <p className="text-xs mt-0.5">
+                      กรุณา <a href="/admin/schools" className="underline font-medium">สร้างโรงเรียน สกร.</a> ก่อน แล้วค่อยกลับมา import
                     </p>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Sheet list */}
-              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+              {/* Sheet list + per-sheet mapping */}
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
                 {preview.sheets.map((sheet) => (
                   <SheetCard
                     key={sheet.name}
                     sheet={sheet}
                     selected={selected.has(sheet.name)}
                     onToggle={() => toggleSheet(sheet.name)}
+                    schoolOptions={skrSchools}
+                    schoolId={schoolMap[sheet.name] ?? null}
+                    onSchoolChange={id => setSchoolMap(prev =>
+                      id ? { ...prev, [sheet.name]: id } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== sheet.name))
+                    )}
+                    suggestions={suggestionsMap[sheet.name] ?? []}
                   />
                 ))}
               </div>
@@ -507,6 +650,9 @@ export default function ImportSkrPage() {
                   เลือก <strong className="text-base-content">{selected.size}</strong> จาก {preview.total_sheets} อำเภอ
                   {selected.size > 0 && (
                     <span> · ประมาณ <strong className="text-base-content">{totalSelected.toLocaleString()}</strong> นักศึกษา</span>
+                  )}
+                  {unmappedSheets.length > 0 && (
+                    <span className="ml-2 text-warning font-medium">· ยังไม่ระบุ รร. {unmappedSheets.length} อำเภอ</span>
                   )}
                 </div>
                 <button
@@ -519,7 +665,7 @@ export default function ImportSkrPage() {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm gap-2"
-                  disabled={selected.size === 0 || importing}
+                  disabled={selected.size === 0 || importing || unmappedSheets.length > 0 || skrSchools.length === 0}
                   onClick={handleImport}
                 >
                   {importing ? (

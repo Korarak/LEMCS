@@ -1165,14 +1165,15 @@ async def skr_import_preview(
 async def skr_import_confirm(
     file: UploadFile = File(...),
     selected_sheets: str = Form(..., description="JSON array ของชื่อ sheet ที่เลือก"),
-    affiliation_id: Optional[int] = Form(None),
+    school_map: str = Form(..., description='JSON dict: {"sheet_name": school_id}'),
     current_user = Depends(require_role("systemadmin", "superadmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Import นักศึกษา สกร. จาก sheets ที่เลือก
-    - selected_sheets: JSON string เช่น '["อ.เมือง","อ.ด่านซ้าย"]'
-    - auto-create สกร.อำเภอX schools ถ้ายังไม่มีในระบบ
+    - selected_sheets: JSON array เช่น '["อ.เมือง","อ.ด่านซ้าย"]'
+    - school_map: JSON dict เช่น '{"อ.เมือง": 12, "อ.ด่านซ้าย": 13}'
+      admin ต้องสร้างโรงเรียน สกร. ก่อนแล้วค่อย import
     """
     filename = file.filename or ""
     if not (filename.lower().endswith(".xls") or filename.lower().endswith(".xlsx")):
@@ -1181,12 +1182,20 @@ async def skr_import_confirm(
     try:
         sheets = _json_skr.loads(selected_sheets)
         if not isinstance(sheets, list) or not sheets:
-            raise ValueError
+            raise ValueError("selected_sheets must be a non-empty list")
     except Exception:
         raise HTTPException(400, "selected_sheets ต้องเป็น JSON array ของชื่อ sheet")
 
+    try:
+        smap_raw = _json_skr.loads(school_map)
+        if not isinstance(smap_raw, dict):
+            raise ValueError("school_map must be a dict")
+        smap = {k: int(v) for k, v in smap_raw.items()}
+    except Exception:
+        raise HTTPException(400, 'school_map ต้องเป็น JSON dict เช่น {"อ.เมือง": 12}')
+
     content = await file.read()
-    return await bulk_import_skr_sheets(db, content, sheets, affiliation_id)
+    return await bulk_import_skr_sheets(db, content, sheets, smap)
 
 
 # ──────────────────────────────────────────

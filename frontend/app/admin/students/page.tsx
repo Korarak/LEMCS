@@ -17,7 +17,7 @@ interface Student {
 interface StudentsResponse { total: number; items: Student[]; }
 interface School { id: number; name: string; district_id: number | null; affiliation_id: number | null; school_type: string | null; }
 interface District { id: number; name: string; affiliation_id: number; }
-interface Affiliation { id: number; name: string; }
+interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
 const GENDER_ICON: Record<string, string> = { "ชาย": "👦", "หญิง": "👧" };
 
@@ -33,7 +33,6 @@ const GRADES_BY_TYPE: Record<string, string[]> = {
   "มัธยมศึกษา": [...G_LOWSEC, ...G_UPSEC],                     // ม.1–6
   "อาชีวศึกษา": G_VOC,                                          // ปวช.1–3 + ปวส.1–2
   "เอกชน":      [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC, ...G_VOC], // ทุกระดับ
-  "กศน.":       [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC],        // (ชื่อเดิม — compat)
   "สกร.":       [...G_PRIMARY, ...G_LOWSEC, ...G_UPSEC],        // กรมส่งเสริมการเรียนรู้
 };
 
@@ -301,7 +300,7 @@ export default function StudentsPage() {
               onChange={e => setFilterAffil(e.target.value)}
             >
               <option value="">ทุกสังกัด</option>
-              {affiliations?.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {affiliations?.map(a => <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>)}
             </select>
 
             {/* เขต — แสดงเฉพาะที่ตรงกับสังกัด */}
@@ -397,7 +396,7 @@ export default function StudentsPage() {
             <div className="flex flex-wrap gap-1 text-xs pt-1 border-t border-base-200">
               {filterAffil && (
                 <span className="badge badge-outline gap-1">
-                  {affiliations?.find(a => String(a.id) === filterAffil)?.name ?? filterAffil}
+                  {(() => { const a = affiliations?.find(a => String(a.id) === filterAffil); return a ? (a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name) : filterAffil; })()}
                   <button onClick={() => setFilterAffil("")} className="hover:text-error">✕</button>
                 </span>
               )}

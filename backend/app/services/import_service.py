@@ -218,7 +218,6 @@ _SCHOOL_KNOWN_PREFIXES = (
     "สถาบัน",
     "วิทยาเขต",
     "สกร.",
-    "กศน.",
 )
 
 # school_type → คำนำหน้าที่ควรเติม
@@ -228,7 +227,6 @@ _PREFIX_BY_TYPE: dict[str, str] = {
     "มัธยมศึกษา": "โรงเรียน",
     "เอกชน":      "โรงเรียน",
     "สกร.":        "สำนักงานส่งเสริมการเรียนรู้",
-    "กศน.":        "สำนักงานส่งเสริมการเรียนรู้",
 }
 
 
@@ -365,6 +363,24 @@ def _read_excel_raw(content: bytes) -> tuple[str | None, list[list[Any]]]:
     return ws.title, rows
 
 
+def _detect_school_from_title_rows(all_rows: list[list[Any]], header_idx: int) -> str:
+    """
+    สแกนแถวก่อน header row หาชื่อสถานศึกษา
+    ใช้สำหรับไฟล์ที่มีชื่อโรงเรียน/วิทยาลัยอยู่ใน title row ก่อน header
+    เช่น students-loeitech.xlsx มี "วิทยาลัยเทคนิคเลย" ใน Row 2
+    """
+    for row in all_rows[:header_idx]:
+        for cell in row:
+            if cell is None:
+                continue
+            text = str(cell).strip()
+            if len(text) < 4:
+                continue
+            if any(text.startswith(p) for p in _SCHOOL_KNOWN_PREFIXES):
+                return text
+    return ""
+
+
 def smart_parse_excel(content: bytes) -> dict:
     """
     อ่าน Excel แบบ smart:
@@ -381,11 +397,15 @@ def smart_parse_excel(content: bytes) -> dict:
             "headers": [], "column_mapping": {},
             "preview_raw": [], "preview_mapped": [],
             "sheet_name": sheet_name,
+            "detected_school_name": "",
         }
 
     # 1. Detect header row
     header_idx = auto_detect_header_row(all_rows)
     headers = [str(c).strip() if c is not None else "" for c in all_rows[header_idx]]
+
+    # 1.5 หาชื่อสถานศึกษาจาก title rows (ก่อน header)
+    detected_school_name = _detect_school_from_title_rows(all_rows, header_idx)
 
     # 2. Map columns
     col_map = map_columns(headers)
@@ -461,6 +481,7 @@ def smart_parse_excel(content: bytes) -> dict:
                            for field, idx in col_map.items()},
         "preview_raw": preview_raw,
         "preview_mapped": preview_mapped,
+        "detected_school_name": detected_school_name,
     }
 
 
