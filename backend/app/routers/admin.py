@@ -430,6 +430,7 @@ class StudentCreate(BaseModel):
     first_name: str
     last_name: str
     gender: str | None = None
+    birthdate: str | None = None
     grade: str | None = None
     classroom: str | None = None
     school_id: int
@@ -440,6 +441,7 @@ class StudentUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     gender: str | None = None
+    birthdate: str | None = None
     grade: str | None = None
     classroom: str | None = None
     school_id: int | None = None
@@ -458,6 +460,7 @@ async def create_student(
         first_name=body.first_name,
         last_name=body.last_name,
         gender=body.gender,
+        birthdate=body.birthdate,
         grade=body.grade,
         classroom=body.classroom,
         school_id=body.school_id,
