@@ -13,7 +13,8 @@ interface Student {
   id: string; student_code: string; title: string | null;
   first_name: string; last_name: string;
   gender: string; birthdate: string | null; grade: string; classroom: string;
-  school_id: number; school_name: string; is_active: boolean; created_at: string | null;
+  school_id: number; school_name: string; is_active: boolean;
+  has_national_id: boolean; created_at: string | null;
 }
 interface StudentsResponse { total: number; items: Student[]; }
 interface School { id: number; name: string; district_id: number | null; affiliation_id: number | null; school_type: string | null; }
@@ -212,7 +213,9 @@ export default function StudentsPage() {
   const [nidError,     setNidError]     = useState("");
   const [nidWarning,   setNidWarning]   = useState("");
 
-  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidError(""); setNidWarning(""); };
+  const [nidClearConfirm, setNidClearConfirm] = useState(false);
+
+  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidClearConfirm(false); setNidError(""); setNidWarning(""); };
 
   function validateThaiIdFormat(id: string): string {
     const s = id.replace(/[-\s]/g, "");
@@ -236,15 +239,19 @@ export default function StudentsPage() {
     return validateThaiIdFormat(id) || validateThaiIdChecksum(id);
   }
 
-  const handleNidSave = async () => {
+  const handleNidSave = async (clear = false) => {
     if (!nidTarget) return;
-    const fmtErr = validateThaiIdFormat(nidValue);
-    if (fmtErr) { setNidError(fmtErr); return; }
+    if (!clear) {
+      const fmtErr = validateThaiIdFormat(nidValue);
+      if (fmtErr) { setNidError(fmtErr); return; }
+    }
     setNidSaving(true);
     try {
-      await api.patch(`/admin/students/${nidTarget.id}/national-id`, { national_id: nidValue.replace(/[-\s]/g, "") });
+      await api.patch(`/admin/students/${nidTarget.id}/national-id`, {
+        national_id: clear ? null : nidValue.replace(/[-\s]/g, ""),
+      });
       setNidTarget(null); mutate(swrKey);
-      toast("อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
+      toast(clear ? "ล้างเลขบัตรประชาชนสำเร็จ" : "อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
     } catch (e: any) {
       setNidError(getApiError(e));
     } finally { setNidSaving(false); }
@@ -297,7 +304,10 @@ export default function StudentsPage() {
         else body.national_id = form.national_id.replace(/[-\s]/g, "");
         await api.post("/admin/students", body);
       } else if (editing) {
-        const { national_id: _nid, ...editBody } = body;
+        const { national_id: _nid, student_code: _sc, ...editBody } = body;
+        if (canEditCode && form.student_code !== editing.student_code) {
+          (editBody as any).student_code = form.student_code.trim();
+        }
         await api.put(`/admin/students/${editing.id}`, editBody);
       }
       setModal(null); mutate(swrKey);
@@ -335,7 +345,8 @@ export default function StudentsPage() {
     } finally { setHardDeleteTarget(null); setHardDeleting(false); }
   };
 
-  const canHardDelete = hasRole("systemadmin", "superadmin");
+  const canHardDelete  = hasRole("systemadmin", "superadmin");
+  const canEditCode    = hasRole("systemadmin");
 
   // ── Render ───────────────────────────────────────────────────────
   return (
@@ -543,6 +554,9 @@ export default function StudentsPage() {
                 <td className="font-medium">
                   {s.title && <span className="text-base-content/50 mr-1 text-xs">{s.title}</span>}
                   {s.first_name} {s.last_name}
+                  {!s.has_national_id && (
+                    <span className="ml-1.5 badge badge-xs badge-warning opacity-70" title="ยังไม่มีเลขบัตรประชาชน">ไม่มีบัตร</span>
+                  )}
                 </td>
                 <td>{s.gender ? `${GENDER_ICON[s.gender] || ""} ${s.gender}` : "—"}</td>
                 <td>{s.grade}/{s.classroom}</td>
@@ -599,9 +613,18 @@ export default function StudentsPage() {
             <h3 className="font-bold text-lg mb-4">{modal === "add" ? "➕ เพิ่มนักเรียนใหม่" : "✏️ แก้ไขข้อมูลนักเรียน"}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="form-control">
-                <label className="label"><span className="label-text">รหัสนักเรียน *</span></label>
-                <input className="input input-bordered" value={form.student_code}
-                  onChange={e => setForm({...form, student_code: e.target.value})} disabled={modal === "edit"}/>
+                <label className="label">
+                  <span className="label-text">รหัสนักเรียน *</span>
+                  {modal === "edit" && canEditCode && (
+                    <span className="label-text-alt text-warning text-xs">แก้ไขได้ (systemadmin)</span>
+                  )}
+                </label>
+                <input
+                  className={`input input-bordered font-mono ${modal === "edit" && canEditCode && form.student_code !== editing?.student_code ? "input-warning" : ""}`}
+                  value={form.student_code}
+                  onChange={e => setForm({...form, student_code: e.target.value})}
+                  disabled={modal === "edit" && !canEditCode}
+                />
               </div>
               <div className="form-control">
                 <label className="label"><span className="label-text">คำนำหน้าชื่อ</span></label>
@@ -824,10 +847,27 @@ export default function StudentsPage() {
               <label className="label"><span className="label-text-alt text-base-content/50">ตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก) สำหรับนักเรียนไร้สัญชาติ</span></label>
             </div>
 
-            {/* Confirmation step */}
-            {!nidConfirm ? (
+            {/* Clear NID confirm */}
+            {nidClearConfirm ? (
+              <div className="space-y-3 mt-2">
+                <div className="alert alert-error py-2 text-xs">
+                  <span>การล้างเลขบัตรประชาชนจะทำให้นักเรียนไม่สามารถ login ด้วยเลขบัตรได้จนกว่าจะกรอกใหม่</span>
+                </div>
+                <div className="modal-action">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setNidClearConfirm(false)}>← ยกเลิก</button>
+                  <button className="btn btn-error btn-sm" onClick={() => handleNidSave(true)} disabled={nidSaving}>
+                    {nidSaving ? <span className="loading loading-spinner loading-xs"/> : "ยืนยัน ล้างเลขบัตร"}
+                  </button>
+                </div>
+              </div>
+            ) : !nidConfirm ? (
               <div className="modal-action">
                 <button className="btn btn-ghost" onClick={() => setNidTarget(null)}>ยกเลิก</button>
+                <button className="btn btn-ghost btn-sm text-error"
+                  onClick={() => setNidClearConfirm(true)}
+                  title="ล้างเลขบัตรประชาชนที่ import ผิดออก">
+                  ล้างเลขบัตร
+                </button>
                 <button className="btn btn-warning" onClick={() => {
                   const fmtErr = validateThaiIdFormat(nidValue);
                   if (fmtErr) { setNidError(fmtErr); setNidWarning(""); return; }
@@ -849,7 +889,7 @@ export default function StudentsPage() {
                 </div>
                 <div className="modal-action">
                   <button className="btn btn-ghost" onClick={() => setNidConfirm(false)}>← แก้ไข</button>
-                  <button className="btn btn-error" onClick={handleNidSave} disabled={nidSaving}>
+                  <button className="btn btn-error" onClick={() => handleNidSave(false)} disabled={nidSaving}>
                     {nidSaving ? <span className="loading loading-spinner loading-xs"/> : "ยืนยันบันทึก"}
                   </button>
                 </div>

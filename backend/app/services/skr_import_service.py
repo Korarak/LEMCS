@@ -121,7 +121,10 @@ def _read_xls_sheets(content: bytes) -> list[dict]:
             row = []
             for c in range(ws.ncols):
                 val = ws.cell_value(r, c)
-                row.append(str(val).strip() if val else "")
+                if isinstance(val, float) and val == int(val):
+                    row.append(str(int(val)))
+                else:
+                    row.append(str(val).strip() if val else "")
             rows.append(row)
         sheets.append({"name": sheet_name, "rows": rows})
     return sheets
