@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import useSWR, { mutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import RoleGuard from "@/components/admin/RoleGuard";
@@ -352,7 +352,7 @@ function UsersPageInner() {
       setModal(null);
       mutate("/admin/users");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด กรุณาลองใหม่", "error");
+      toast(getApiError(e, "เกิดข้อผิดพลาด กรุณาลองใหม่"), "error");
     } finally {
       setSaving(false);
     }

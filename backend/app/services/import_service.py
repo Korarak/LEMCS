@@ -467,7 +467,11 @@ def smart_parse_excel(content: bytes) -> dict:
     preview_raw = []
     preview_mapped = []
     for row in data_rows[:5]:
-        raw = [str(row[i]).strip() if i < len(row) and row[i] is not None else "" for i in range(len(headers))]
+        raw = [
+            (str(int(row[i])) if isinstance(row[i], float) and row[i] == int(row[i]) else str(row[i]).strip())
+            if i < len(row) and row[i] is not None else ""
+            for i in range(len(headers))
+        ]
         mapped = _apply_mapping(row, headers, col_map)
         preview_raw.append(raw)
         preview_mapped.append(mapped)
@@ -492,7 +496,12 @@ def _apply_mapping(row: list[Any], headers: list[str], col_map: dict[str, int | 
         if idx is None or idx >= len(row):
             return ""
         v = row[idx]
-        return str(v).strip() if v is not None else ""
+        if v is None:
+            return ""
+        # Excel อ่าน integer column เป็น float (เช่น 6823002555.0) → ตัด .0 ออก
+        if isinstance(v, float) and v == int(v):
+            return str(int(v)).strip()
+        return str(v).strip()
 
     prefix_raw = get("prefix")
     title = normalize_title(prefix_raw) if prefix_raw else ""

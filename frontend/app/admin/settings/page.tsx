@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import RoleGuard from "@/components/admin/RoleGuard";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { hasRole } from "@/lib/auth";
 
@@ -29,7 +29,7 @@ function DangerZone() {
       showToast(`ลบนักศึกษาของ "${res.data.affiliation_name}" สำเร็จ — ${res.data.deleted_students} คน`, "success");
       setTruncateAffId("");
     } catch (e: any) {
-      showToast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      showToast(getApiError(e), "error");
     } finally {
       setTruncating(false);
     }

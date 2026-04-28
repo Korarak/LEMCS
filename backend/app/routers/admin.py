@@ -7,8 +7,15 @@ from app.deps import get_current_admin_user, require_role
 from app.models.db_models import School, Student, District, Affiliation, User, AuditLog, Assessment, Alert, Notification
 from app.services.encryption import encrypt_pii, hash_pii
 from app.services.auth_service import create_tokens
+import re as _re
 
 router = APIRouter()
+
+def _norm_code(v: str | None) -> str:
+    """ตัด float suffix ที่ Excel ส่งมา: '6823002555.0' → '6823002555'"""
+    if not v:
+        return v or ""
+    return _re.sub(r'^(\d+)\.0+$', r'\1', v.strip())
 
 # ── Affiliation CRUD ─────────────────────────────────────────────────────────
 
@@ -406,7 +413,7 @@ async def get_students(
         "items": [
             {
                 "id": str(r.Student.id),
-                "student_code": r.Student.student_code,
+                "student_code": _norm_code(r.Student.student_code),
                 "title": r.Student.title,
                 "first_name": r.Student.first_name,
                 "last_name": r.Student.last_name,
@@ -417,6 +424,7 @@ async def get_students(
                 "school_id": r.Student.school_id,
                 "school_name": r.school_name,
                 "is_active": r.Student.is_active,
+                "has_national_id": r.Student.national_id_hash is not None,
                 "created_at": r.Student.created_at.isoformat() if r.Student.created_at else None,
             } for r in rows
         ],
@@ -439,6 +447,7 @@ class StudentCreate(BaseModel):
     national_id: str | None = None
 
 class StudentUpdate(BaseModel):
+    student_code: str | None = None
     title: str | None = None
     first_name: str | None = None
     last_name: str | None = None
@@ -457,7 +466,7 @@ async def create_student(
     from app.services.import_service import normalize_national_id
 
     stu = Student(
-        student_code=body.student_code,
+        student_code=_norm_code(body.student_code),
         title=body.title,
         first_name=body.first_name,
         last_name=body.last_name,
@@ -483,7 +492,7 @@ async def create_student(
     db.add(stu)
     await db.commit()
     await db.refresh(stu)
-    return {"id": str(stu.id), "student_code": stu.student_code, "created": True}
+    return {"id": str(stu.id), "student_code": _norm_code(stu.student_code), "created": True}
 
 @router.put("/students/{student_id}")
 async def update_student(
@@ -496,7 +505,21 @@ async def update_student(
     stu = result.scalar_one_or_none()
     if not stu:
         raise HTTPException(404, "ไม่พบนักเรียน")
-    for field, val in body.model_dump(exclude_unset=True).items():
+
+    data = body.model_dump(exclude_unset=True)
+
+    if "student_code" in data:
+        new_code = _norm_code(data.pop("student_code") or "").strip()
+        if not new_code:
+            raise HTTPException(400, "รหัสนักเรียนต้องไม่ว่าง")
+        dup = await db.execute(
+            select(Student).where(Student.student_code == new_code, Student.id != student_id)
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(409, f"รหัสนักเรียน '{new_code}' มีอยู่ในระบบแล้ว")
+        stu.student_code = new_code
+
+    for field, val in data.items():
         setattr(stu, field, val)
     await db.commit()
     return {"id": str(stu.id), "updated": True}
@@ -603,6 +626,46 @@ async def truncate_students_by_affiliation(
         "deleted_users": user_del.rowcount,
     }
 
+@router.delete("/students/{student_id}/hard")
+async def hard_delete_student(
+    student_id: str,
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ลบนักเรียนถาวร — cascade ลบ assessments, alerts, notifications, user account"""
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    stu = result.scalar_one_or_none()
+    if not stu:
+        raise HTTPException(404, "ไม่พบนักเรียน")
+
+    student_name = f"{stu.first_name} {stu.last_name}"
+    student_code = stu.student_code
+
+    # cascade ตามลำดับ FK
+    user_ids_res = await db.execute(select(User.id).where(User.student_id == student_id))
+    user_ids = [row[0] for row in user_ids_res.fetchall()]
+    if user_ids:
+        await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
+
+    assessment_ids_res = await db.execute(
+        select(Assessment.id).where(Assessment.student_id == student_id)
+    )
+    assessment_ids = [row[0] for row in assessment_ids_res.fetchall()]
+    if assessment_ids:
+        await db.execute(delete(Alert).where(Alert.assessment_id.in_(assessment_ids)))
+    await db.execute(delete(Alert).where(Alert.student_id == student_id))
+    await db.execute(delete(Assessment).where(Assessment.student_id == student_id))
+    await db.execute(delete(User).where(User.student_id == student_id))
+    await db.execute(delete(Student).where(Student.id == student_id))
+    await db.commit()
+
+    return {
+        "deleted": True,
+        "student_code": student_code,
+        "student_name": student_name,
+    }
+
+
 @router.delete("/students/{student_id}")
 async def toggle_student_active(
     student_id: str,
@@ -619,7 +682,7 @@ async def toggle_student_active(
 
 
 class NationalIdUpdate(BaseModel):
-    national_id: str
+    national_id: str | None = None
 
 
 @router.patch("/students/{student_id}/national-id")
@@ -629,7 +692,7 @@ async def update_student_national_id(
     current_user = Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
-    """แก้ไขเลขบัตรประชาชนนักเรียน — บันทึก audit log ทุกครั้ง (PDPA)"""
+    """แก้ไข/ล้างเลขบัตรประชาชนนักเรียน — บันทึก audit log ทุกครั้ง (PDPA)"""
     from app.services.import_service import normalize_national_id
 
     result = await db.execute(select(Student).where(Student.id == student_id))
@@ -637,32 +700,35 @@ async def update_student_national_id(
     if not stu:
         raise HTTPException(404, "ไม่พบนักเรียน")
 
-    nid, err = normalize_national_id(body.national_id.strip())
-    if err:
-        raise HTTPException(400, f"เลขบัตรประชาชนไม่ถูกต้อง: {err}")
-    if not nid:
-        raise HTTPException(400, "กรุณาระบุเลขบัตรประชาชน")
+    clearing = not body.national_id or not body.national_id.strip()
 
-    # Check duplicate hash (another student already has this ID)
-    new_hash = hash_pii(nid)
-    dup = await db.execute(
-        select(Student).where(Student.national_id_hash == new_hash, Student.id != student_id)
-    )
-    if dup.scalar_one_or_none():
-        raise HTTPException(409, "เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว")
-
-    stu.national_id = encrypt_pii(nid)
-    stu.national_id_hash = new_hash
+    if clearing:
+        stu.national_id = None
+        stu.national_id_hash = None
+        action = "clear_national_id"
+    else:
+        nid, err = normalize_national_id(body.national_id.strip())
+        if err:
+            raise HTTPException(400, f"เลขบัตรประชาชนไม่ถูกต้อง: {err}")
+        new_hash = hash_pii(nid)
+        dup = await db.execute(
+            select(Student).where(Student.national_id_hash == new_hash, Student.id != student_id)
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(409, "เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว")
+        stu.national_id = encrypt_pii(nid)
+        stu.national_id_hash = new_hash
+        action = "update_national_id"
 
     log = AuditLog(
         user_id=current_user.id,
-        action="update_national_id",
+        action=action,
         resource=f"student:{student_id}",
         details={"updated_by": str(current_user.id), "student_code": stu.student_code},
     )
     db.add(log)
     await db.commit()
-    return {"id": str(stu.id), "updated": True}
+    return {"id": str(stu.id), "updated": True, "cleared": clearing}
 
 
 # ──────────────────────────────────────────
@@ -1370,7 +1436,7 @@ async def proxy_assess_students(
         sid = str(s.id)
         items.append({
             "id": sid,
-            "student_code": s.student_code,
+            "student_code": _norm_code(s.student_code),
             "title": s.title,
             "first_name": s.first_name,
             "last_name": s.last_name,

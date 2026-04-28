@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import useSWR, { mutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { hasRole } from "@/lib/auth";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -12,7 +13,8 @@ interface Student {
   id: string; student_code: string; title: string | null;
   first_name: string; last_name: string;
   gender: string; birthdate: string | null; grade: string; classroom: string;
-  school_id: number; school_name: string; is_active: boolean; created_at: string | null;
+  school_id: number; school_name: string; is_active: boolean;
+  has_national_id: boolean; created_at: string | null;
 }
 interface StudentsResponse { total: number; items: Student[]; }
 interface School { id: number; name: string; district_id: number | null; affiliation_id: number | null; school_type: string | null; }
@@ -53,6 +55,16 @@ function formatThaiDate(dateStr: string | null): string {
 const TITLES_MALE   = ["เด็กชาย", "นาย"];
 const TITLES_FEMALE = ["เด็กหญิง", "นางสาว", "นาง"];
 const ALL_TITLES    = [...TITLES_MALE, ...TITLES_FEMALE];
+
+const MONTHS_TH = [
+  { v: "01", l: "มกราคม" }, { v: "02", l: "กุมภาพันธ์" }, { v: "03", l: "มีนาคม" },
+  { v: "04", l: "เมษายน" }, { v: "05", l: "พฤษภาคม" },  { v: "06", l: "มิถุนายน" },
+  { v: "07", l: "กรกฎาคม" }, { v: "08", l: "สิงหาคม" },  { v: "09", l: "กันยายน" },
+  { v: "10", l: "ตุลาคม" },  { v: "11", l: "พฤศจิกายน" }, { v: "12", l: "ธันวาคม" },
+];
+const DAYS_OPT = Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, "0"));
+const BE_NOW   = new Date().getFullYear() + 543;
+const BIRTH_YEARS_BE = Array.from({ length: 35 }, (_, i) => BE_NOW - 3 - i);
 
 const TITLE_GENDER: Record<string, string> = {
   "เด็กชาย": "ชาย", "นาย": "ชาย",
@@ -172,11 +184,26 @@ export default function StudentsPage() {
 
   // ── Modal ────────────────────────────────────────────────────────
   const [modal,        setModal]        = useState<"add"|"edit"|null>(null);
-  const [editing,      setEditing]      = useState<Student | null>(null);
-  const [form,         setForm]         = useState({ ...INIT_FORM });
-  const [saving,       setSaving]       = useState(false);
-  const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
-  const [formNidError, setFormNidError] = useState("");
+  const [editing,          setEditing]         = useState<Student | null>(null);
+  const [form,             setForm]            = useState({ ...INIT_FORM });
+  const [saving,           setSaving]          = useState(false);
+  const [toggleTarget,     setToggleTarget]    = useState<Student | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Student | null>(null);
+  const [hardDeleting,     setHardDeleting]    = useState(false);
+  const [formNidError,    setFormNidError]    = useState("");
+  const [formNidWarning,  setFormNidWarning]  = useState("");
+  const [nidChecksumOk,   setNidChecksumOk]   = useState(false);
+
+  // ── Birthdate dropdowns (พ.ศ.) ────────────────────────────────────
+  const [bDay,   setBDay]   = useState("");
+  const [bMonth, setBMonth] = useState("");
+  const [bYear,  setBYear]  = useState("");
+
+  const handleBirthdate = (d: string, m: string, y: string) => {
+    setBDay(d); setBMonth(m); setBYear(y);
+    const bd = (d && m && y) ? `${parseInt(y) - 543}-${m}-${d}` : "";
+    setForm(f => ({ ...f, birthdate: bd }));
+  };
 
   // ── National ID modal ────────────────────────────────────────────
   const [nidTarget,    setNidTarget]    = useState<Student | null>(null);
@@ -184,39 +211,66 @@ export default function StudentsPage() {
   const [nidConfirm,   setNidConfirm]   = useState(false);
   const [nidSaving,    setNidSaving]    = useState(false);
   const [nidError,     setNidError]     = useState("");
+  const [nidWarning,   setNidWarning]   = useState("");
 
-  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidError(""); };
+  const [nidClearConfirm, setNidClearConfirm] = useState(false);
 
-  function validateThaiId(id: string): string {
+  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidClearConfirm(false); setNidError(""); setNidWarning(""); };
+
+  function validateThaiIdFormat(id: string): string {
     const s = id.replace(/[-\s]/g, "");
     if (/^[Gg]\d{12}$/.test(s)) return "";
     if (!/^\d{13}$/.test(s)) return `ต้องเป็นตัวเลข 13 หลัก หรือ G-Code (พบ ${s.replace(/\D/g, "").length} หลัก)`;
     if (s[0] === "0") return "เลขบัตรประชาชนต้องไม่ขึ้นต้นด้วย 0";
-    if (parseInt(s[0]) > 8) return "เลขบัตรประชาชนบุคคลธรรมดาต้องขึ้นต้นด้วย 1–8";
-    let sum = 0;
-    for (let i = 0; i < 12; i++) sum += parseInt(s[i]) * (13 - i);
-    const check = (11 - (sum % 11)) % 10;
-    if (check !== parseInt(s[12])) return "เลข checksum ไม่ถูกต้อง — กรุณาตรวจสอบอีกครั้ง";
     return "";
   }
 
-  const handleNidSave = async () => {
+  function validateThaiIdChecksum(id: string): string {
+    const s = id.replace(/[-\s]/g, "");
+    if (/^[Gg]\d{12}$/.test(s) || !/^\d{13}$/.test(s) || s[0] === "0") return "";
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += parseInt(s[i]) * (13 - i);
+    const check = (11 - (sum % 11)) % 10;
+    if (check !== parseInt(s[12])) return "เลข checksum ไม่ถูกต้อง — กรุณาตรวจสอบความถูกต้องของเลขอีกครั้ง";
+    return "";
+  }
+
+  function validateThaiId(id: string): string {
+    return validateThaiIdFormat(id) || validateThaiIdChecksum(id);
+  }
+
+  const handleNidSave = async (clear = false) => {
     if (!nidTarget) return;
-    const err = validateThaiId(nidValue);
-    if (err) { setNidError(err); return; }
+    if (!clear) {
+      const fmtErr = validateThaiIdFormat(nidValue);
+      if (fmtErr) { setNidError(fmtErr); return; }
+    }
     setNidSaving(true);
     try {
-      await api.patch(`/admin/students/${nidTarget.id}/national-id`, { national_id: nidValue.replace(/[-\s]/g, "") });
+      await api.patch(`/admin/students/${nidTarget.id}/national-id`, {
+        national_id: clear ? null : nidValue.replace(/[-\s]/g, ""),
+      });
       setNidTarget(null); mutate(swrKey);
-      toast("อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
+      toast(clear ? "ล้างเลขบัตรประชาชนสำเร็จ" : "อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
     } catch (e: any) {
-      setNidError(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+      setNidError(getApiError(e));
     } finally { setNidSaving(false); }
   };
 
-  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setFormNidError(""); setModal("add"); };
+  const openAdd = () => {
+    setEditing(null); setForm({ ...INIT_FORM });
+    setBDay(""); setBMonth(""); setBYear("");
+    setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false);
+    setModal("add");
+  };
   const openEdit = (s: Student) => {
     setEditing(s);
+    let bD = "", bM = "", bY = "";
+    if (s.birthdate) {
+      const [cy, cm, cd] = s.birthdate.split("-");
+      bD = cd || ""; bM = cm || ""; bY = cy ? String(parseInt(cy) + 543) : "";
+    }
+    setBDay(bD); setBMonth(bM); setBYear(bY);
     setForm({ student_code: s.student_code, title: s.title || "นาย",
       first_name: s.first_name, last_name: s.last_name,
       gender: s.gender || "ชาย", birthdate: s.birthdate || "", grade: s.grade || "ม.1", classroom: s.classroom || "1",
@@ -229,8 +283,14 @@ export default function StudentsPage() {
       toast("กรุณากรอกข้อมูลที่จำเป็น", "warning"); return;
     }
     if (modal === "add" && form.national_id.trim()) {
-      const err = validateThaiId(form.national_id);
-      if (err) { setFormNidError(err); toast(`เลขบัตรประชาชน: ${err}`, "warning"); return; }
+      const fmtErr = validateThaiIdFormat(form.national_id);
+      if (fmtErr) { setFormNidError(fmtErr); toast(`เลขบัตรประชาชน: ${fmtErr}`, "warning"); return; }
+      const csumWarn = validateThaiIdChecksum(form.national_id);
+      if (csumWarn && !nidChecksumOk) {
+        setFormNidWarning(csumWarn);
+        toast("กรุณายืนยันเลขบัตรประชาชนก่อนดำเนินการต่อ", "warning");
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -244,13 +304,16 @@ export default function StudentsPage() {
         else body.national_id = form.national_id.replace(/[-\s]/g, "");
         await api.post("/admin/students", body);
       } else if (editing) {
-        const { national_id: _nid, ...editBody } = body;
+        const { national_id: _nid, student_code: _sc, ...editBody } = body;
+        if (canEditCode && form.student_code !== editing.student_code) {
+          (editBody as any).student_code = form.student_code.trim();
+        }
         await api.put(`/admin/students/${editing.id}`, editBody);
       }
       setModal(null); mutate(swrKey);
       toast(modal === "add" ? "เพิ่มนักเรียนสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setSaving(false); }
   };
 
@@ -266,9 +329,24 @@ export default function StudentsPage() {
         toggleTarget.is_active ? "warning" : "success",
       );
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setToggleTarget(null); }
   };
+
+  const doHardDelete = async () => {
+    if (!hardDeleteTarget) return;
+    setHardDeleting(true);
+    try {
+      await api.delete(`/admin/students/${hardDeleteTarget.id}/hard`);
+      mutate(swrKey);
+      toast(`ลบ ${hardDeleteTarget.first_name} ${hardDeleteTarget.last_name} ออกจากระบบแล้ว`, "success");
+    } catch (e: any) {
+      toast(getApiError(e), "error");
+    } finally { setHardDeleteTarget(null); setHardDeleting(false); }
+  };
+
+  const canHardDelete  = hasRole("systemadmin", "superadmin");
+  const canEditCode    = hasRole("systemadmin");
 
   // ── Render ───────────────────────────────────────────────────────
   return (
@@ -476,6 +554,9 @@ export default function StudentsPage() {
                 <td className="font-medium">
                   {s.title && <span className="text-base-content/50 mr-1 text-xs">{s.title}</span>}
                   {s.first_name} {s.last_name}
+                  {!s.has_national_id && (
+                    <span className="ml-1.5 badge badge-xs badge-warning opacity-70" title="ยังไม่มีเลขบัตรประชาชน">ไม่มีบัตร</span>
+                  )}
                 </td>
                 <td>{s.gender ? `${GENDER_ICON[s.gender] || ""} ${s.gender}` : "—"}</td>
                 <td>{s.grade}/{s.classroom}</td>
@@ -497,6 +578,12 @@ export default function StudentsPage() {
                       onClick={() => setToggleTarget(s)} title={s.is_active ? "ปิดบัญชี" : "เปิดบัญชี"}>
                       {s.is_active ? "🚫" : "✅"}
                     </button>
+                    {canHardDelete && (
+                      <button className="btn btn-ghost btn-xs text-error opacity-40 hover:opacity-100"
+                        onClick={() => setHardDeleteTarget(s)} title="ลบถาวร">
+                        🗑️
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -526,9 +613,18 @@ export default function StudentsPage() {
             <h3 className="font-bold text-lg mb-4">{modal === "add" ? "➕ เพิ่มนักเรียนใหม่" : "✏️ แก้ไขข้อมูลนักเรียน"}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="form-control">
-                <label className="label"><span className="label-text">รหัสนักเรียน *</span></label>
-                <input className="input input-bordered" value={form.student_code}
-                  onChange={e => setForm({...form, student_code: e.target.value})} disabled={modal === "edit"}/>
+                <label className="label">
+                  <span className="label-text">รหัสนักเรียน *</span>
+                  {modal === "edit" && canEditCode && (
+                    <span className="label-text-alt text-warning text-xs">แก้ไขได้ (systemadmin)</span>
+                  )}
+                </label>
+                <input
+                  className={`input input-bordered font-mono ${modal === "edit" && canEditCode && form.student_code !== editing?.student_code ? "input-warning" : ""}`}
+                  value={form.student_code}
+                  onChange={e => setForm({...form, student_code: e.target.value})}
+                  disabled={modal === "edit" && !canEditCode}
+                />
               </div>
               <div className="form-control">
                 <label className="label"><span className="label-text">คำนำหน้าชื่อ</span></label>
@@ -571,16 +667,42 @@ export default function StudentsPage() {
               </div>
               <div className="form-control">
                 <label className="label">
-                  <span className="label-text">วันเกิด</span>
+                  <span className="label-text">วันเกิด (พ.ศ.)</span>
                   <span className="label-text-alt text-base-content/40">ใช้ login</span>
                 </label>
-                <input
-                  type="date"
-                  className="input input-bordered"
-                  value={form.birthdate}
-                  max={new Date().toISOString().slice(0, 10)}
-                  onChange={e => setForm({...form, birthdate: e.target.value})}
-                />
+                <div className="grid grid-cols-3 gap-1.5">
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bDay}
+                    onChange={e => handleBirthdate(e.target.value, bMonth, bYear)}
+                  >
+                    <option value="">วัน</option>
+                    {DAYS_OPT.map(d => <option key={d} value={d}>{parseInt(d)}</option>)}
+                  </select>
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bMonth}
+                    onChange={e => handleBirthdate(bDay, e.target.value, bYear)}
+                  >
+                    <option value="">เดือน</option>
+                    {MONTHS_TH.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                  </select>
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bYear}
+                    onChange={e => handleBirthdate(bDay, bMonth, e.target.value)}
+                  >
+                    <option value="">พ.ศ.</option>
+                    {BIRTH_YEARS_BE.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+                {(bDay && bMonth && bYear) && (
+                  <label className="label">
+                    <span className="label-text-alt text-success">
+                      {parseInt(bDay)} {MONTHS_TH.find(m => m.v === bMonth)?.l} {bYear}
+                    </span>
+                  </label>
+                )}
               </div>
               <div className="form-control col-span-2">
                 <label className="label"><span className="label-text">โรงเรียน</span></label>
@@ -608,21 +730,41 @@ export default function StudentsPage() {
                     <span className="label-text-alt text-base-content/40">ไม่บังคับ</span>
                   </label>
                   <input
-                    className={`input input-bordered font-mono tracking-widest ${formNidError ? "input-error" : ""}`}
+                    className={`input input-bordered font-mono tracking-widest ${formNidError ? "input-error" : formNidWarning ? "input-warning" : ""}`}
                     placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
                     value={form.national_id}
                     maxLength={17}
                     onChange={e => {
                       setForm({...form, national_id: e.target.value});
-                      setFormNidError("");
+                      setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false);
                     }}
                     onBlur={e => {
-                      if (e.target.value.trim()) setFormNidError(validateThaiId(e.target.value));
+                      const v = e.target.value.trim();
+                      if (!v) return;
+                      const fmtErr = validateThaiIdFormat(v);
+                      if (fmtErr) { setFormNidError(fmtErr); setFormNidWarning(""); return; }
+                      const csumWarn = validateThaiIdChecksum(v);
+                      setFormNidError(""); setFormNidWarning(csumWarn);
                     }}
                   />
                   {formNidError
                     ? <label className="label"><span className="label-text-alt text-error">{formNidError}</span></label>
-                    : <label className="label"><span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span></label>
+                    : formNidWarning
+                      ? (
+                        <label className="label flex-col items-start gap-1">
+                          <span className="label-text-alt text-warning">{formNidWarning}</span>
+                          <label className="flex items-center gap-2 cursor-pointer mt-1">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-warning checkbox-sm"
+                              checked={nidChecksumOk}
+                              onChange={e => setNidChecksumOk(e.target.checked)}
+                            />
+                            <span className="text-sm text-base-content/70">ยืนยันว่าเลขที่กรอกถูกต้องแล้ว</span>
+                          </label>
+                        </label>
+                      )
+                      : <label className="label"><span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span></label>
                   }
                 </div>
               )}
@@ -648,6 +790,35 @@ export default function StudentsPage() {
         onCancel={() => setToggleTarget(null)}
       />
 
+      {/* Hard delete modal */}
+      {hardDeleteTarget && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-sm">
+            <h3 className="font-bold text-lg text-error mb-1">🗑️ ลบนักเรียนถาวร</h3>
+            <p className="text-sm text-base-content/60 mb-4">
+              {hardDeleteTarget.first_name} {hardDeleteTarget.last_name}
+              <span className="ml-2 font-mono text-xs bg-base-200 px-1.5 py-0.5 rounded">
+                {hardDeleteTarget.student_code}
+              </span>
+            </p>
+            <div className="alert alert-error py-2 text-xs mb-4">
+              <span>ลบข้อมูลทั้งหมดถาวร รวมถึงประวัติการประเมิน, แจ้งเตือน และ account — <strong>ไม่สามารถกู้คืนได้</strong></span>
+            </div>
+            <div className="modal-action">
+              <button className="btn btn-ghost btn-sm" onClick={() => setHardDeleteTarget(null)}>
+                ยกเลิก
+              </button>
+              <button className="btn btn-error btn-sm" onClick={doHardDelete} disabled={hardDeleting}>
+                {hardDeleting ? <span className="loading loading-spinner loading-xs" /> : "ยืนยัน ลบถาวร"}
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => setHardDeleteTarget(null)}>close</button>
+          </form>
+        </dialog>
+      )}
+
       {/* National ID correction modal */}
       {nidTarget && (
         <dialog className="modal modal-open">
@@ -670,31 +841,55 @@ export default function StudentsPage() {
                 placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
                 value={nidValue}
                 maxLength={17}
-                onChange={e => { setNidValue(e.target.value); setNidError(""); setNidConfirm(false); }}
+                onChange={e => { setNidValue(e.target.value); setNidError(""); setNidWarning(""); setNidConfirm(false); }}
               />
               {nidError && <label className="label"><span className="label-text-alt text-error">{nidError}</span></label>}
               <label className="label"><span className="label-text-alt text-base-content/50">ตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก) สำหรับนักเรียนไร้สัญชาติ</span></label>
             </div>
 
-            {/* Confirmation step */}
-            {!nidConfirm ? (
+            {/* Clear NID confirm */}
+            {nidClearConfirm ? (
+              <div className="space-y-3 mt-2">
+                <div className="alert alert-error py-2 text-xs">
+                  <span>การล้างเลขบัตรประชาชนจะทำให้นักเรียนไม่สามารถ login ด้วยเลขบัตรได้จนกว่าจะกรอกใหม่</span>
+                </div>
+                <div className="modal-action">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setNidClearConfirm(false)}>← ยกเลิก</button>
+                  <button className="btn btn-error btn-sm" onClick={() => handleNidSave(true)} disabled={nidSaving}>
+                    {nidSaving ? <span className="loading loading-spinner loading-xs"/> : "ยืนยัน ล้างเลขบัตร"}
+                  </button>
+                </div>
+              </div>
+            ) : !nidConfirm ? (
               <div className="modal-action">
                 <button className="btn btn-ghost" onClick={() => setNidTarget(null)}>ยกเลิก</button>
+                <button className="btn btn-ghost btn-sm text-error"
+                  onClick={() => setNidClearConfirm(true)}
+                  title="ล้างเลขบัตรประชาชนที่ import ผิดออก">
+                  ล้างเลขบัตร
+                </button>
                 <button className="btn btn-warning" onClick={() => {
-                  const err = validateThaiId(nidValue);
-                  if (err) { setNidError(err); return; }
+                  const fmtErr = validateThaiIdFormat(nidValue);
+                  if (fmtErr) { setNidError(fmtErr); setNidWarning(""); return; }
+                  const csumWarn = validateThaiIdChecksum(nidValue);
+                  setNidError(""); setNidWarning(csumWarn);
                   setNidConfirm(true);
                 }}>ตรวจสอบ →</button>
               </div>
             ) : (
               <div className="space-y-3">
+                {nidWarning && (
+                  <div className="alert alert-warning py-2 text-sm">
+                    <span>⚠️ {nidWarning} — หากแน่ใจว่าเลขถูกต้อง สามารถกดยืนยันได้</span>
+                  </div>
+                )}
                 <div className="bg-base-200 rounded-lg px-4 py-3 text-sm">
                   <p className="font-medium mb-1">ยืนยันการเปลี่ยนแปลง</p>
                   <p className="font-mono text-base">{nidValue.replace(/[-\s]/g, "").replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, "$1-$2-$3-$4-$5")}</p>
                 </div>
                 <div className="modal-action">
                   <button className="btn btn-ghost" onClick={() => setNidConfirm(false)}>← แก้ไข</button>
-                  <button className="btn btn-error" onClick={handleNidSave} disabled={nidSaving}>
+                  <button className="btn btn-error" onClick={() => handleNidSave(false)} disabled={nidSaving}>
                     {nidSaving ? <span className="loading loading-spinner loading-xs"/> : "ยืนยันบันทึก"}
                   </button>
                 </div>

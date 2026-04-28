@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { mutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import { getAdminRole, getAdminSchoolId, type AdminRole } from "@/lib/auth";
@@ -311,7 +311,7 @@ export default function SmartImportPage() {
       }
       setStep(2);
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "ไม่สามารถอ่านไฟล์ได้", "error");
+      toast(getApiError(e, "ไม่สามารถอ่านไฟล์ได้"), "error");
     } finally {
       setLoading(false);
     }
@@ -361,7 +361,7 @@ export default function SmartImportPage() {
         mutate("/admin/me");
       }
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาดระหว่าง import", "error");
+      toast(getApiError(e, "เกิดข้อผิดพลาดระหว่าง import"), "error");
     } finally {
       setLoading(false);
     }
@@ -411,7 +411,7 @@ export default function SmartImportPage() {
         mutate("/admin/me");
       }
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "สร้างโรงเรียนไม่สำเร็จ", "error");
+      toast(getApiError(e, "สร้างโรงเรียนไม่สำเร็จ"), "error");
     } finally {
       setCreatingSchool(false);
     }
@@ -434,7 +434,7 @@ export default function SmartImportPage() {
       setTruncateSchoolId("");
       setTruncateSearch("");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally {
       setTruncating(false);
     }

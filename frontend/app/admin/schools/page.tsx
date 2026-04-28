@@ -149,7 +149,7 @@ export default function SchoolsPage() {
       mutate("/admin/schools/stats");
       toast(editing ? "แก้ไขโรงเรียนสำเร็จ" : "เพิ่มโรงเรียนสำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally {
       setSaving(false);
     }
