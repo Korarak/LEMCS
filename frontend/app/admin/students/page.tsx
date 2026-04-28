@@ -176,7 +176,9 @@ export default function StudentsPage() {
   const [form,         setForm]         = useState({ ...INIT_FORM });
   const [saving,       setSaving]       = useState(false);
   const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
-  const [formNidError, setFormNidError] = useState("");
+  const [formNidError,    setFormNidError]    = useState("");
+  const [formNidWarning,  setFormNidWarning]  = useState("");
+  const [nidChecksumOk,   setNidChecksumOk]   = useState(false);
 
   // ── National ID modal ────────────────────────────────────────────
   const [nidTarget,    setNidTarget]    = useState<Student | null>(null);
@@ -184,26 +186,36 @@ export default function StudentsPage() {
   const [nidConfirm,   setNidConfirm]   = useState(false);
   const [nidSaving,    setNidSaving]    = useState(false);
   const [nidError,     setNidError]     = useState("");
+  const [nidWarning,   setNidWarning]   = useState("");
 
-  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidError(""); };
+  const openNid = (s: Student) => { setNidTarget(s); setNidValue(""); setNidConfirm(false); setNidError(""); setNidWarning(""); };
 
-  function validateThaiId(id: string): string {
+  function validateThaiIdFormat(id: string): string {
     const s = id.replace(/[-\s]/g, "");
     if (/^[Gg]\d{12}$/.test(s)) return "";
     if (!/^\d{13}$/.test(s)) return `ต้องเป็นตัวเลข 13 หลัก หรือ G-Code (พบ ${s.replace(/\D/g, "").length} หลัก)`;
     if (s[0] === "0") return "เลขบัตรประชาชนต้องไม่ขึ้นต้นด้วย 0";
-    if (parseInt(s[0]) > 8) return "เลขบัตรประชาชนบุคคลธรรมดาต้องขึ้นต้นด้วย 1–8";
+    return "";
+  }
+
+  function validateThaiIdChecksum(id: string): string {
+    const s = id.replace(/[-\s]/g, "");
+    if (/^[Gg]\d{12}$/.test(s) || !/^\d{13}$/.test(s) || s[0] === "0") return "";
     let sum = 0;
     for (let i = 0; i < 12; i++) sum += parseInt(s[i]) * (13 - i);
     const check = (11 - (sum % 11)) % 10;
-    if (check !== parseInt(s[12])) return "เลข checksum ไม่ถูกต้อง — กรุณาตรวจสอบอีกครั้ง";
+    if (check !== parseInt(s[12])) return "เลข checksum ไม่ถูกต้อง — กรุณาตรวจสอบความถูกต้องของเลขอีกครั้ง";
     return "";
+  }
+
+  function validateThaiId(id: string): string {
+    return validateThaiIdFormat(id) || validateThaiIdChecksum(id);
   }
 
   const handleNidSave = async () => {
     if (!nidTarget) return;
-    const err = validateThaiId(nidValue);
-    if (err) { setNidError(err); return; }
+    const fmtErr = validateThaiIdFormat(nidValue);
+    if (fmtErr) { setNidError(fmtErr); return; }
     setNidSaving(true);
     try {
       await api.patch(`/admin/students/${nidTarget.id}/national-id`, { national_id: nidValue.replace(/[-\s]/g, "") });
@@ -214,7 +226,7 @@ export default function StudentsPage() {
     } finally { setNidSaving(false); }
   };
 
-  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setFormNidError(""); setModal("add"); };
+  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false); setModal("add"); };
   const openEdit = (s: Student) => {
     setEditing(s);
     setForm({ student_code: s.student_code, title: s.title || "นาย",
@@ -229,8 +241,14 @@ export default function StudentsPage() {
       toast("กรุณากรอกข้อมูลที่จำเป็น", "warning"); return;
     }
     if (modal === "add" && form.national_id.trim()) {
-      const err = validateThaiId(form.national_id);
-      if (err) { setFormNidError(err); toast(`เลขบัตรประชาชน: ${err}`, "warning"); return; }
+      const fmtErr = validateThaiIdFormat(form.national_id);
+      if (fmtErr) { setFormNidError(fmtErr); toast(`เลขบัตรประชาชน: ${fmtErr}`, "warning"); return; }
+      const csumWarn = validateThaiIdChecksum(form.national_id);
+      if (csumWarn && !nidChecksumOk) {
+        setFormNidWarning(csumWarn);
+        toast("กรุณายืนยันเลขบัตรประชาชนก่อนดำเนินการต่อ", "warning");
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -608,21 +626,41 @@ export default function StudentsPage() {
                     <span className="label-text-alt text-base-content/40">ไม่บังคับ</span>
                   </label>
                   <input
-                    className={`input input-bordered font-mono tracking-widest ${formNidError ? "input-error" : ""}`}
+                    className={`input input-bordered font-mono tracking-widest ${formNidError ? "input-error" : formNidWarning ? "input-warning" : ""}`}
                     placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
                     value={form.national_id}
                     maxLength={17}
                     onChange={e => {
                       setForm({...form, national_id: e.target.value});
-                      setFormNidError("");
+                      setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false);
                     }}
                     onBlur={e => {
-                      if (e.target.value.trim()) setFormNidError(validateThaiId(e.target.value));
+                      const v = e.target.value.trim();
+                      if (!v) return;
+                      const fmtErr = validateThaiIdFormat(v);
+                      if (fmtErr) { setFormNidError(fmtErr); setFormNidWarning(""); return; }
+                      const csumWarn = validateThaiIdChecksum(v);
+                      setFormNidError(""); setFormNidWarning(csumWarn);
                     }}
                   />
                   {formNidError
                     ? <label className="label"><span className="label-text-alt text-error">{formNidError}</span></label>
-                    : <label className="label"><span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span></label>
+                    : formNidWarning
+                      ? (
+                        <label className="label flex-col items-start gap-1">
+                          <span className="label-text-alt text-warning">{formNidWarning}</span>
+                          <label className="flex items-center gap-2 cursor-pointer mt-1">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-warning checkbox-sm"
+                              checked={nidChecksumOk}
+                              onChange={e => setNidChecksumOk(e.target.checked)}
+                            />
+                            <span className="text-sm text-base-content/70">ยืนยันว่าเลขที่กรอกถูกต้องแล้ว</span>
+                          </label>
+                        </label>
+                      )
+                      : <label className="label"><span className="label-text-alt text-base-content/40">ตัวเลข 13 หลัก หรือ G-Code สำหรับนักเรียนไร้สัญชาติ</span></label>
                   }
                 </div>
               )}
@@ -670,7 +708,7 @@ export default function StudentsPage() {
                 placeholder="x-xxxx-xxxxx-xx-x หรือ Gxxxxxxxxxxxx"
                 value={nidValue}
                 maxLength={17}
-                onChange={e => { setNidValue(e.target.value); setNidError(""); setNidConfirm(false); }}
+                onChange={e => { setNidValue(e.target.value); setNidError(""); setNidWarning(""); setNidConfirm(false); }}
               />
               {nidError && <label className="label"><span className="label-text-alt text-error">{nidError}</span></label>}
               <label className="label"><span className="label-text-alt text-base-content/50">ตัวเลข 13 หลัก หรือ G-Code (G + 12 หลัก) สำหรับนักเรียนไร้สัญชาติ</span></label>
@@ -681,13 +719,20 @@ export default function StudentsPage() {
               <div className="modal-action">
                 <button className="btn btn-ghost" onClick={() => setNidTarget(null)}>ยกเลิก</button>
                 <button className="btn btn-warning" onClick={() => {
-                  const err = validateThaiId(nidValue);
-                  if (err) { setNidError(err); return; }
+                  const fmtErr = validateThaiIdFormat(nidValue);
+                  if (fmtErr) { setNidError(fmtErr); setNidWarning(""); return; }
+                  const csumWarn = validateThaiIdChecksum(nidValue);
+                  setNidError(""); setNidWarning(csumWarn);
                   setNidConfirm(true);
                 }}>ตรวจสอบ →</button>
               </div>
             ) : (
               <div className="space-y-3">
+                {nidWarning && (
+                  <div className="alert alert-warning py-2 text-sm">
+                    <span>⚠️ {nidWarning} — หากแน่ใจว่าเลขถูกต้อง สามารถกดยืนยันได้</span>
+                  </div>
+                )}
                 <div className="bg-base-200 rounded-lg px-4 py-3 text-sm">
                   <p className="font-medium mb-1">ยืนยันการเปลี่ยนแปลง</p>
                   <p className="font-mono text-base">{nidValue.replace(/[-\s]/g, "").replace(/(\d{1})(\d{4})(\d{5})(\d{2})(\d{1})/, "$1-$2-$3-$4-$5")}</p>
