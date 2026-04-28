@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { getAdminRole, getAdminSchoolId } from "@/lib/auth";
 import StatsCards          from "@/components/admin/StatsCards";
 import SeverityChart       from "@/components/admin/SeverityChart";
 import TrendChart          from "@/components/admin/TrendChart";
@@ -100,6 +101,8 @@ const QUICK_ACTIONS = [
 ];
 
 export default function AdminDashboardPage() {
+  const [isSchoolAdmin, setIsSchoolAdmin] = useState(false);
+  const [mySchoolId,    setMySchoolId]    = useState<number | null>(null);
   const [filters, setFilters] = useState<DashboardFilters>({
     survey_round_id: "",
     affiliation_id: "", district_id: "", school_id: "",
@@ -107,7 +110,23 @@ export default function AdminDashboardPage() {
   });
   const [exporting, setExporting] = useState<"pdf"|"excel"|null>(null);
 
+  useEffect(() => {
+    const role = getAdminRole();
+    const sid  = getAdminSchoolId();
+    if (role === "schooladmin" && sid) {
+      setIsSchoolAdmin(true);
+      setMySchoolId(sid);
+      setFilters(prev => ({ ...prev, school_id: sid.toString() }));
+    }
+  }, []);
+
   const { data: rounds } = useSWR<SurveyRound[]>("/survey-rounds", fetcher);
+
+  // schooladmin: โหลดชื่อโรงเรียน (backend scopes เหลือเฉพาะโรงเรียนตัวเอง)
+  const { data: mySchoolList } = useSWR<{id: number; name: string}[]>(
+    isSchoolAdmin ? "/admin/schools" : null, fetcher
+  );
+  const mySchoolName = mySchoolList?.[0]?.name ?? "โรงเรียนของคุณ";
 
   // Auto-select compare group_by based on active filters
   const compareGroupBy = useMemo(() => {
@@ -124,6 +143,10 @@ export default function AdminDashboardPage() {
   );
 
   const subtitleText = useMemo(() => {
+    if (isSchoolAdmin) {
+      if (selectedRound) return `${mySchoolName} · ${selectedRound.label}`;
+      return mySchoolName;
+    }
     if (selectedRound) {
       return `${selectedRound.label} · ปีการศึกษา ${selectedRound.academic_year} ภาคเรียนที่ ${selectedRound.term}`;
     }
@@ -137,7 +160,7 @@ export default function AdminDashboardPage() {
       return `ช่วงวันที่ ${from} ถึง ${to}`;
     }
     return "ข้อมูลทั้งหมด จ.เลย";
-  }, [selectedRound, filters.date_from, filters.date_to]);
+  }, [isSchoolAdmin, mySchoolName, selectedRound, filters.date_from, filters.date_to]);
 
   const { data: summaryData } = useSWR(
     `/reports/summary${qs ? `?${qs}` : ""}`, fetcher, { refreshInterval: 60000 },
@@ -150,7 +173,10 @@ export default function AdminDashboardPage() {
   );
 
   const totalRegistered: number = studentCountData?.total ?? 0;
-  const handleFilterChange = useCallback((f: DashboardFilters) => setFilters(f), []);
+  const handleFilterChange = useCallback((f: DashboardFilters) => {
+    // schooladmin ต้องล็อก school_id ไว้เสมอ
+    setFilters(isSchoolAdmin && mySchoolId ? { ...f, school_id: mySchoolId.toString() } : f);
+  }, [isSchoolAdmin, mySchoolId]);
 
   const severityChartData = useMemo(() => {
     if (!summaryData?.data) return [];
@@ -218,7 +244,7 @@ export default function AdminDashboardPage() {
 
       {/* ── Filter ─────────────────────────────────────────────────────── */}
       <div className="print:hidden">
-        <FilterBar onFilterChange={handleFilterChange} />
+        <FilterBar onFilterChange={handleFilterChange} isSchoolAdmin={isSchoolAdmin} />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -251,7 +277,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <InsightPanel summaryData={summaryData} trendData={trendData} totalRegistered={totalRegistered} />
-        <AffiliationStudentStats />
+        {!isSchoolAdmin && <AffiliationStudentStats />}
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -399,9 +425,9 @@ export default function AdminDashboardPage() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION D — เปรียบเทียบระหว่างองค์กร
+          SECTION D — เปรียบเทียบระหว่างองค์กร (ซ่อนสำหรับ schooladmin)
       ══════════════════════════════════════════════════════════════════ */}
-      <section className="space-y-4">
+      {!isSchoolAdmin && <section className="space-y-4">
         <SectionHeader
           icon="🏫"
           label="เปรียบเทียบสัดส่วนความเสี่ยงระหว่างสังกัด / เขต / โรงเรียน"
@@ -433,7 +459,7 @@ export default function AdminDashboardPage() {
             />
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* ── Print styles ─────────────────────────────────────────────── */}
       <style>{`

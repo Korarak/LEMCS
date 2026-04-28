@@ -21,6 +21,7 @@ export interface DashboardFilters {
 
 interface FilterBarProps {
   onFilterChange: (filters: DashboardFilters) => void;
+  isSchoolAdmin?: boolean;
   children?: ReactNode;
 }
 
@@ -30,7 +31,7 @@ const EMPTY: DashboardFilters = {
   assessment_type: "", grade: "", gender: "", date_from: "", date_to: "",
 };
 
-export default function FilterBar({ onFilterChange, children }: FilterBarProps) {
+export default function FilterBar({ onFilterChange, isSchoolAdmin = false, children }: FilterBarProps) {
   const [filters, setFilters] = useState<DashboardFilters>(EMPTY);
 
   const { data: rounds } = useSWR<SurveyRound[]>("/survey-rounds", fetcher);
@@ -89,44 +90,43 @@ export default function FilterBar({ onFilterChange, children }: FilterBarProps) 
           )}
         </div>
 
-        {/* แถว 1: ลำดับชั้น สังกัด → เขต → โรงเรียน */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {/* สังกัด */}
-          <select
-            className="select select-bordered select-sm w-full"
-            value={filters.affiliation_id}
-            onChange={e => update({ affiliation_id: e.target.value, district_id: "", school_id: "" })}
-          >
-            <option value="">ทุกสังกัด</option>
-            {affiliations?.map((a: any) => (
-              <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>
-            ))}
-          </select>
+        {/* แถว 1: สังกัด → เขต → โรงเรียน (ซ่อนสำหรับ schooladmin เพราะ scope ถูกล็อกที่ backend แล้ว) */}
+        {!isSchoolAdmin && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <select
+              className="select select-bordered select-sm w-full"
+              value={filters.affiliation_id}
+              onChange={e => update({ affiliation_id: e.target.value, district_id: "", school_id: "" })}
+            >
+              <option value="">ทุกสังกัด</option>
+              {affiliations?.map((a: any) => (
+                <option key={a.id} value={a.id}>{a.abbreviation ? `${a.abbreviation} — ${a.name}` : a.name}</option>
+              ))}
+            </select>
 
-          {/* เขตพื้นที่ */}
-          <select
-            className="select select-bordered select-sm w-full"
-            value={filters.district_id}
-            onChange={e => update({ district_id: e.target.value, school_id: "" })}
-          >
-            <option value="">ทุกเขตพื้นที่</option>
-            {districts?.map((d: any) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
+            <select
+              className="select select-bordered select-sm w-full"
+              value={filters.district_id}
+              onChange={e => update({ district_id: e.target.value, school_id: "" })}
+            >
+              <option value="">ทุกเขตพื้นที่</option>
+              {districts?.map((d: any) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
 
-          {/* โรงเรียน */}
-          <select
-            className="select select-bordered select-sm w-full"
-            value={filters.school_id}
-            onChange={e => update({ school_id: e.target.value })}
-          >
-            <option value="">ทุกโรงเรียน</option>
-            {schools?.map((s: any) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
+            <select
+              className="select select-bordered select-sm w-full"
+              value={filters.school_id}
+              onChange={e => update({ school_id: e.target.value })}
+            >
+              <option value="">ทุกโรงเรียน</option>
+              {schools?.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* แถวพิเศษจาก parent (เช่น สถานะ/ระดับสำหรับ alerts) */}
         {children}

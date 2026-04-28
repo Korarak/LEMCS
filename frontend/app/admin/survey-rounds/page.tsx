@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import { getAdminRole } from "@/lib/auth";
 import type { SurveyRound } from "@/types/survey-round";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
@@ -247,6 +248,12 @@ function DeleteRoundModal({ round, stats, onClose, onConfirm }: {
 // ─── หน้าหลัก ─────────────────────────────────────────────────────────────────
 export default function SurveyRoundsPage() {
   const { toast } = useToast();
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsSystemAdmin(getAdminRole() === "systemadmin");
+  }, []);
+
   const { data: rounds, isLoading } = useSWR<SurveyRound[]>("/survey-rounds", fetcher);
   const { data: statsMap } = useSWR<Record<string, RoundStats>>(
     rounds ? ["survey-rounds-stats", rounds.map(r => r.id).join(",")] : null,
@@ -331,24 +338,28 @@ export default function SurveyRoundsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">จัดการรอบการสำรวจ</h1>
+          <h1 className="text-2xl font-bold">รอบการสำรวจ</h1>
           <p className="text-sm text-base-content/50 mt-0.5">
-            เปิด / ปิด / ยกเลิก หรือลบรอบการสำรวจ
+            {isSystemAdmin
+              ? "เปิด / ปิด / ยกเลิก หรือลบรอบการสำรวจ"
+              : "รายการรอบการสำรวจในระบบ (ดูข้อมูลได้อย่างเดียว)"}
           </p>
         </div>
-        <button
-          className="btn btn-success btn-sm gap-2"
-          onClick={() => setShowOpen(true)}
-          disabled={rounds?.some(r => r.status === "open")}
-          title={rounds?.some(r => r.status === "open") ? "ปิดรอบปัจจุบันก่อน" : undefined}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none"
-            viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-          เปิดรอบใหม่
-        </button>
+        {isSystemAdmin && (
+          <button
+            className="btn btn-success btn-sm gap-2"
+            onClick={() => setShowOpen(true)}
+            disabled={rounds?.some(r => r.status === "open")}
+            title={rounds?.some(r => r.status === "open") ? "ปิดรอบปัจจุบันก่อน" : undefined}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none"
+              viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            เปิดรอบใหม่
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -371,7 +382,7 @@ export default function SurveyRoundsPage() {
                 <th>ข้อมูล assessment</th>
                 <th>วันเปิด</th>
                 <th>วันปิด / ยกเลิก</th>
-                <th className="text-right">การดำเนินการ</th>
+                {isSystemAdmin && <th className="text-right">การดำเนินการ</th>}
               </tr>
             </thead>
             <tbody>
@@ -403,32 +414,34 @@ export default function SurveyRoundsPage() {
                     <td className="text-xs text-base-content/60">
                       {r.cancelled_at ? fmt(r.cancelled_at) : fmt(r.closed_at)}
                     </td>
-                    <td>
-                      <div className="flex justify-end gap-1.5">
-                        {r.status === "open" && (
-                          <>
-                            <button
-                              className="btn btn-xs btn-outline"
-                              onClick={() => handleClose(r)}
-                            >
-                              ปิดรอบ
-                            </button>
-                            <button
-                              className="btn btn-xs btn-warning"
-                              onClick={() => setCancelTarget(r)}
-                            >
-                              ยกเลิก
-                            </button>
-                          </>
-                        )}
-                        <button
-                          className="btn btn-xs btn-error btn-outline"
-                          onClick={() => setDeleteTarget(r)}
-                        >
-                          ลบถาวร
-                        </button>
-                      </div>
-                    </td>
+                    {isSystemAdmin && (
+                      <td>
+                        <div className="flex justify-end gap-1.5">
+                          {r.status === "open" && (
+                            <>
+                              <button
+                                className="btn btn-xs btn-outline"
+                                onClick={() => handleClose(r)}
+                              >
+                                ปิดรอบ
+                              </button>
+                              <button
+                                className="btn btn-xs btn-warning"
+                                onClick={() => setCancelTarget(r)}
+                              >
+                                ยกเลิก
+                              </button>
+                            </>
+                          )}
+                          <button
+                            className="btn btn-xs btn-error btn-outline"
+                            onClick={() => setDeleteTarget(r)}
+                          >
+                            ลบถาวร
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -437,18 +450,20 @@ export default function SurveyRoundsPage() {
         )}
       </div>
 
-      {/* Legend */}
-      <div className="text-xs text-base-content/40 space-y-0.5 pl-1">
-        <p><strong>ปิดรอบ</strong> — หยุดรับแบบประเมิน ข้อมูลยังอยู่ครบ นับในรายงาน</p>
-        <p><strong>ยกเลิก</strong> — หยุดรับแบบประเมิน ข้อมูลยังอยู่ แต่ไม่นับในรายงาน</p>
-        <p><strong>ลบถาวร</strong> — ลบ assessment ทั้งหมดในรอบออกจากระบบถาวร (Alert ยังคงอยู่)</p>
-      </div>
+      {/* Legend — เฉพาะ systemadmin */}
+      {isSystemAdmin && (
+        <div className="text-xs text-base-content/40 space-y-0.5 pl-1">
+          <p><strong>ปิดรอบ</strong> — หยุดรับแบบประเมิน ข้อมูลยังอยู่ครบ นับในรายงาน</p>
+          <p><strong>ยกเลิก</strong> — หยุดรับแบบประเมิน ข้อมูลยังอยู่ แต่ไม่นับในรายงาน</p>
+          <p><strong>ลบถาวร</strong> — ลบ assessment ทั้งหมดในรอบออกจากระบบถาวร (Alert ยังคงอยู่)</p>
+        </div>
+      )}
 
-      {/* Modals */}
-      {showOpen && (
+      {/* Modals — เฉพาะ systemadmin */}
+      {isSystemAdmin && showOpen && (
         <OpenRoundModal onClose={() => setShowOpen(false)} onConfirm={handleOpen} />
       )}
-      {cancelTarget && (
+      {isSystemAdmin && cancelTarget && (
         <CancelRoundModal
           round={cancelTarget}
           stats={statsMap?.[cancelTarget.id]}
@@ -456,7 +471,7 @@ export default function SurveyRoundsPage() {
           onConfirm={handleCancel}
         />
       )}
-      {deleteTarget && (
+      {isSystemAdmin && deleteTarget && (
         <DeleteRoundModal
           round={deleteTarget}
           stats={statsMap?.[deleteTarget.id]}

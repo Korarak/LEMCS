@@ -40,7 +40,7 @@ const ROLE_SCOPE_NOTE: Record<string, string> = {
   systemadmin:     "เข้าถึงได้ทุกข้อมูลในระบบ",
   superadmin:      "ดูข้อมูลทั้งจังหวัด",
   commissionadmin: "ต้องผูกสังกัด + เขตพื้นที่",
-  schooladmin:     "ต้องผูกโรงเรียน",
+  schooladmin:     "ผูกโรงเรียนทีหลังได้ — จะถูกกำหนดอัตโนมัติเมื่อ import ข้อมูลครั้งแรก",
 };
 
 const EMPTY_FORM = {
@@ -329,9 +329,6 @@ function UsersPageInner() {
     if (modal === "add" && (!form.username.trim() || !form.password)) {
       toast("กรุณากรอก Username และ Password", "error"); return;
     }
-    if (form.role === "schooladmin" && !form.school_id) {
-      toast("กรุณาเลือกโรงเรียน", "error"); return;
-    }
     if (form.role === "commissionadmin" && !form.district_id) {
       toast("กรุณาเลือกเขตพื้นที่", "error"); return;
     }
@@ -540,10 +537,14 @@ function UsersPageInner() {
                     </span>
                   </td>
                   <td className="max-w-[220px]">
-                    <span className="flex items-center gap-1.5 text-xs text-base-content/80">
-                      <span className="shrink-0">{org.icon}</span>
-                      <span className="truncate" title={org.label}>{org.label}</span>
-                    </span>
+                    {u.role === "schooladmin" && !u.school_id ? (
+                      <span className="badge badge-xs badge-warning gap-1">⏳ รอ import</span>
+                    ) : (
+                      <span className="flex items-center gap-1.5 text-xs text-base-content/80">
+                        <span className="shrink-0">{org.icon}</span>
+                        <span className="truncate" title={org.label}>{org.label}</span>
+                      </span>
+                    )}
                   </td>
                   <td className="text-xs text-base-content/60 whitespace-nowrap">
                     {ll
@@ -675,8 +676,8 @@ function UsersPageInner() {
               {form.role === "schooladmin" && (
                 <div className="form-control">
                   <label className="label py-1">
-                    <span className="label-text text-sm font-medium">ผูกโรงเรียน <span className="text-error">*</span></span>
-                    <span className="label-text-alt text-xs text-base-content/40">สังกัด → เขต → โรงเรียน</span>
+                    <span className="label-text text-sm font-medium">ผูกโรงเรียน <span className="badge badge-xs badge-ghost ml-1">ไม่บังคับ</span></span>
+                    <span className="label-text-alt text-xs text-base-content/40">ถ้าไม่เลือก จะผูกอัตโนมัติเมื่อ import ครั้งแรก</span>
                   </label>
                   <div className="bg-base-200/50 rounded-xl p-3">
                     <SchoolSelector

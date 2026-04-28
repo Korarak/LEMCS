@@ -64,7 +64,7 @@ class OpenRoundBody(BaseModel):
 @router.post("/open")
 async def open_round(
     body: OpenRoundBody,
-    current_user=Depends(require_role("systemadmin", "superadmin")),
+    current_user=Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """เปิดรอบสำรวจใหม่ — ต้องปิดรอบเก่าก่อน"""
@@ -102,7 +102,7 @@ async def open_round(
 @router.post("/{round_id}/close")
 async def close_round(
     round_id: str,
-    current_user=Depends(require_role("systemadmin", "superadmin")),
+    current_user=Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """ปิดรอบสำรวจ — ข้อมูลใน round นี้จะถูกแช่แข็งสำหรับดูย้อนหลัง"""
@@ -147,7 +147,7 @@ async def get_round_stats(
 @router.post("/{round_id}/cancel")
 async def cancel_round(
     round_id: str,
-    current_user=Depends(require_role("systemadmin", "superadmin")),
+    current_user=Depends(require_role("systemadmin")),
     db: AsyncSession = Depends(get_db),
 ):
     """ยกเลิกรอบ (soft delete) — ข้อมูล assessment ยังคงอยู่ แต่รอบถูก mark ว่า cancelled"""

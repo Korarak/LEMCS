@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
+import { mutate } from "swr";
 import { api } from "@/lib/api";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { getAdminRole, getAdminSchoolId, type AdminRole } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,6 +121,8 @@ function StepBar({ step }: { step: 1 | 2 | 3 }) {
 
 export default function SmartImportPage() {
   const { toast } = useToast();
+  const [userRole, setUserRole] = useState<AdminRole | null>(null);
+  const [mySchoolId, setMySchoolId] = useState<number | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -153,6 +157,7 @@ export default function SmartImportPage() {
   const [createSchoolAffId,   setCreateSchoolAffId]   = useState<number | "">("");
   const [createSchoolType,    setCreateSchoolType]    = useState<string>("");
   const [creatingSchool, setCreatingSchool] = useState(false);
+  const [confirmCreateSchool, setConfirmCreateSchool] = useState(false);
 
   // Step 2 → 3
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -186,6 +191,29 @@ export default function SmartImportPage() {
       };
     });
   }, [preview, editMapping]);
+
+  // true เมื่อตรวจพบชื่อโรงเรียนในไฟล์ แต่ไม่พบในระบบ และยังไม่ได้เลือกโรงเรียน
+  const schoolNotFound = useMemo(() => {
+    if (!detectedSchoolName || !!selectedSchoolId) return false;
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+    return !schools.some(s =>
+      norm(s.name) === norm(detectedSchoolName) ||
+      norm(s.name).includes(norm(detectedSchoolName)) ||
+      norm(detectedSchoolName).includes(norm(s.name))
+    );
+  }, [detectedSchoolName, selectedSchoolId, schools]);
+
+  useEffect(() => {
+    setUserRole(getAdminRole());
+    setMySchoolId(getAdminSchoolId());
+  }, []);
+
+  // Auto-select school for linked schooladmin
+  useEffect(() => {
+    if (userRole === "schooladmin" && mySchoolId && schools.length > 0 && !selectedSchoolId) {
+      setSelectedSchoolId(mySchoolId);
+    }
+  }, [userRole, mySchoolId, schools]);
 
   // โหลดรายการสังกัด เขตพื้นที่ และโรงเรียน
   useEffect(() => {
@@ -325,6 +353,13 @@ export default function SmartImportPage() {
       setResult(res.data);
       setStep(3);
       toast(`นำเข้าสำเร็จ — สร้างใหม่ ${res.data.created} อัปเดต ${res.data.updated}`, "success");
+      if (res.data.school_linked && res.data.new_tokens) {
+        toast(`คุณถูกผูกกับโรงเรียน "${res.data.school_name}" เรียบร้อยแล้ว`, "info");
+        localStorage.setItem("access_token", res.data.new_tokens.access_token);
+        localStorage.setItem("lemcs_token", res.data.new_tokens.access_token);
+        localStorage.setItem("refresh_token", res.data.new_tokens.refresh_token);
+        mutate("/admin/me");
+      }
     } catch (e: any) {
       toast(e?.response?.data?.detail || "เกิดข้อผิดพลาดระหว่าง import", "error");
     } finally {
@@ -366,6 +401,15 @@ export default function SmartImportPage() {
       setSchools(prev => [...prev, newSchool]);
       setSelectedSchoolId(res.data.id);
       toast(`สร้างโรงเรียน "${normalizedName}" สำเร็จ และเลือกแล้ว`, "success");
+      // schooladmin ถูกผูกกับโรงเรียนที่เพิ่งสร้าง → รับ token ใหม่
+      if (res.data.school_linked && res.data.new_tokens) {
+        toast(`คุณถูกผูกกับโรงเรียน "${normalizedName}" เรียบร้อยแล้ว`, "info");
+        localStorage.setItem("access_token", res.data.new_tokens.access_token);
+        localStorage.setItem("lemcs_token", res.data.new_tokens.access_token);
+        localStorage.setItem("refresh_token", res.data.new_tokens.refresh_token);
+        setMySchoolId(res.data.id);
+        mutate("/admin/me");
+      }
     } catch (e: any) {
       toast(e?.response?.data?.detail || "สร้างโรงเรียนไม่สำเร็จ", "error");
     } finally {
@@ -535,17 +579,14 @@ export default function SmartImportPage() {
               )}
 
               {/* กรณีที่ตรวจพบชื่อโรงเรียนในไฟล์ แต่ไม่พบในระบบ */}
-              {detectedSchoolName && !selectedSchoolId && (() => {
-                const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
-                const exists = schools.some(s => norm(s.name) === norm(detectedSchoolName)
-                  || norm(s.name).includes(norm(detectedSchoolName))
-                  || norm(detectedSchoolName).includes(norm(s.name)));
-                if (exists) return null;
+              {schoolNotFound && (() => {
                 const distForCreate = districts.filter(d => !createSchoolAffId || d.affiliation_id === Number(createSchoolAffId));
                 return (
                   <div className="alert alert-warning py-3">
                     <div className="w-full space-y-2">
-                      <p className="font-semibold text-sm">ไม่พบ "{detectedSchoolName}" ในระบบ — สร้างโรงเรียนใหม่ได้เลย</p>
+                      <p className="font-semibold text-sm">
+                        ไม่พบ &quot;{detectedSchoolName}&quot; ในระบบ — เลือกสังกัด/เขต แล้วกด สร้าง
+                      </p>
                       <div className="flex flex-wrap gap-2 items-center">
                         <select className="select select-bordered select-xs"
                           value={createSchoolAffId}
@@ -571,7 +612,7 @@ export default function SmartImportPage() {
                         <button
                           className="btn btn-warning btn-xs"
                           disabled={!createSchoolDistId || creatingSchool}
-                          onClick={doCreateSchool}>
+                          onClick={() => setConfirmCreateSchool(true)}>
                           {creatingSchool ? <span className="loading loading-spinner loading-xs"/> : "➕ สร้างและเลือก"}
                         </button>
                       </div>
@@ -580,8 +621,8 @@ export default function SmartImportPage() {
                 );
               })()}
 
-              {/* Filter by affiliation / district */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Filter by affiliation / district — ซ่อนเมื่อ create-school form กำลังแสดงอยู่ */}
+              {!schoolNotFound && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select className="select select-bordered select-sm w-full"
                   value={selectedAffId}
                   onChange={(e) => { setSelectedAffId(Number(e.target.value) || ""); setSelectedDistId(""); setSelectedSchoolId(""); setSchoolSearch(""); }}>
@@ -595,7 +636,7 @@ export default function SmartImportPage() {
                   <option value="">— ทุกเขตพื้นที่ —</option>
                   {availableDistricts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
-              </div>
+              </div>}
 
               {/* Typeahead school search */}
               {!selectedSchoolId ? (
@@ -932,7 +973,8 @@ export default function SmartImportPage() {
         </div>
       )}
 
-      {/* ─── Truncate Zone (แสดงทุก step) ──────────────────────────────────── */}
+      {/* ─── Truncate Zone (ซ่อนสำหรับ schooladmin) ────────────────────────── */}
+      {userRole !== "schooladmin" && <>
       <div className="divider text-base-content/30 text-xs">โซนอันตราย</div>
       <div className="card bg-base-100 border-2 border-error/30 shadow-sm">
         <div className="card-body p-4 space-y-3">
@@ -976,6 +1018,38 @@ export default function SmartImportPage() {
           )}
         </div>
       </div>
+      </>}
+
+      {confirmCreateSchool && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-sm">
+            <h3 className="font-bold text-lg mb-3">ยืนยันการสร้างโรงเรียน</h3>
+            <p className="text-sm text-base-content/70">
+              ต้องการเพิ่ม <strong>&quot;{detectedSchoolName}&quot;</strong> เข้าระบบ LEMCS ใช่หรือไม่?
+            </p>
+            <p className="text-xs text-base-content/40 mt-1">
+              โรงเรียนจะถูกสร้างในเขตพื้นที่ที่เลือก และเลือกให้อัตโนมัติ
+            </p>
+            <div className="modal-action mt-5">
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmCreateSchool(false)}>
+                ยกเลิก
+              </button>
+              <button
+                className="btn btn-warning btn-sm"
+                disabled={creatingSchool}
+                onClick={() => { setConfirmCreateSchool(false); doCreateSchool(); }}
+              >
+                {creatingSchool
+                  ? <span className="loading loading-spinner loading-xs" />
+                  : "➕ ยืนยัน สร้างโรงเรียน"}
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => setConfirmCreateSchool(false)}>close</button>
+          </form>
+        </dialog>
+      )}
 
       {confirmImport && (() => {
         const nidIssueCount = livePreview.filter(r => r.national_id && !r.nid_valid).length;
