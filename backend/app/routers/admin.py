@@ -603,6 +603,46 @@ async def truncate_students_by_affiliation(
         "deleted_users": user_del.rowcount,
     }
 
+@router.delete("/students/{student_id}/hard")
+async def hard_delete_student(
+    student_id: str,
+    current_user = Depends(require_role("systemadmin", "superadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ลบนักเรียนถาวร — cascade ลบ assessments, alerts, notifications, user account"""
+    result = await db.execute(select(Student).where(Student.id == student_id))
+    stu = result.scalar_one_or_none()
+    if not stu:
+        raise HTTPException(404, "ไม่พบนักเรียน")
+
+    student_name = f"{stu.first_name} {stu.last_name}"
+    student_code = stu.student_code
+
+    # cascade ตามลำดับ FK
+    user_ids_res = await db.execute(select(User.id).where(User.student_id == student_id))
+    user_ids = [row[0] for row in user_ids_res.fetchall()]
+    if user_ids:
+        await db.execute(delete(Notification).where(Notification.user_id.in_(user_ids)))
+
+    assessment_ids_res = await db.execute(
+        select(Assessment.id).where(Assessment.student_id == student_id)
+    )
+    assessment_ids = [row[0] for row in assessment_ids_res.fetchall()]
+    if assessment_ids:
+        await db.execute(delete(Alert).where(Alert.assessment_id.in_(assessment_ids)))
+    await db.execute(delete(Alert).where(Alert.student_id == student_id))
+    await db.execute(delete(Assessment).where(Assessment.student_id == student_id))
+    await db.execute(delete(User).where(User.student_id == student_id))
+    await db.execute(delete(Student).where(Student.id == student_id))
+    await db.commit()
+
+    return {
+        "deleted": True,
+        "student_code": student_code,
+        "student_name": student_name,
+    }
+
+
 @router.delete("/students/{student_id}")
 async def toggle_student_active(
     student_id: str,

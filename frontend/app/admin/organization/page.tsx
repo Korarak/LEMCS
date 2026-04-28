@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import RoleGuard from "@/components/admin/RoleGuard";
 
@@ -41,7 +41,7 @@ function AffiliationSection({
       globalMutate("/admin/districts");
       toast(modal === "add" ? "เพิ่มสังกัดสำเร็จ" : "แก้ไขสังกัดสำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setSaving(false); }
   };
 
@@ -54,7 +54,7 @@ function AffiliationSection({
       globalMutate("/admin/districts");
       toast("ลบสังกัดสำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "ไม่สามารถลบได้", "error");
+      toast(getApiError(e, "ไม่สามารถลบได้"), "error");
     } finally { setSaving(false); }
   };
 
@@ -197,7 +197,7 @@ function DistrictSection({
       globalMutate("/admin/districts");
       toast(modal === "add" ? "เพิ่มเขตพื้นที่สำเร็จ" : "แก้ไขเขตพื้นที่สำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setSaving(false); }
   };
 
@@ -209,7 +209,7 @@ function DistrictSection({
       globalMutate("/admin/districts");
       toast("ลบเขตพื้นที่สำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "ไม่สามารถลบได้", "error");
+      toast(getApiError(e, "ไม่สามารถลบได้"), "error");
     } finally { setSaving(false); }
   };
 

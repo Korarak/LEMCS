@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { ASSESSMENT_QUESTIONS } from "@/lib/questions";
 import RoleGuard from "@/components/admin/RoleGuard";
 
@@ -144,7 +144,7 @@ function ProxyFormInner() {
       setNextTarget(findNext(res.data));
       setStep("result");
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "เกิดข้อผิดพลาด");
+      setError(getApiError(e));
     } finally {
       setSubmitting(false);
     }

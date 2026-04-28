@@ -64,10 +64,16 @@ api.interceptors.response.use(
 export function getApiError(e: unknown, fallback = "เกิดข้อผิดพลาด"): string {
   const detail = (e as any)?.response?.data?.detail;
   if (!detail) return fallback;
+  // Pydantic v2: array of {type, loc, msg, input, url}
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((d: any) => d?.msg || String(d)).filter(Boolean);
+    return msgs.length ? msgs.join(", ") : fallback;
+  }
   if (typeof detail === "object") {
     const lines: string[] = [detail.message, detail.hint];
     if (detail.affected_users) lines.push(`บัญชีที่ต้องจัดการ: ${detail.affected_users}`);
-    return lines.filter(Boolean).join("\n");
+    const joined = lines.filter(Boolean).join("\n");
+    return joined || fallback;
   }
   return String(detail) || fallback;
 }

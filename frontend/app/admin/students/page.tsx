@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import useSWR, { mutate } from "swr";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import { hasRole } from "@/lib/auth";
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);
 
@@ -53,6 +54,16 @@ function formatThaiDate(dateStr: string | null): string {
 const TITLES_MALE   = ["เด็กชาย", "นาย"];
 const TITLES_FEMALE = ["เด็กหญิง", "นางสาว", "นาง"];
 const ALL_TITLES    = [...TITLES_MALE, ...TITLES_FEMALE];
+
+const MONTHS_TH = [
+  { v: "01", l: "มกราคม" }, { v: "02", l: "กุมภาพันธ์" }, { v: "03", l: "มีนาคม" },
+  { v: "04", l: "เมษายน" }, { v: "05", l: "พฤษภาคม" },  { v: "06", l: "มิถุนายน" },
+  { v: "07", l: "กรกฎาคม" }, { v: "08", l: "สิงหาคม" },  { v: "09", l: "กันยายน" },
+  { v: "10", l: "ตุลาคม" },  { v: "11", l: "พฤศจิกายน" }, { v: "12", l: "ธันวาคม" },
+];
+const DAYS_OPT = Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, "0"));
+const BE_NOW   = new Date().getFullYear() + 543;
+const BIRTH_YEARS_BE = Array.from({ length: 35 }, (_, i) => BE_NOW - 3 - i);
 
 const TITLE_GENDER: Record<string, string> = {
   "เด็กชาย": "ชาย", "นาย": "ชาย",
@@ -172,13 +183,26 @@ export default function StudentsPage() {
 
   // ── Modal ────────────────────────────────────────────────────────
   const [modal,        setModal]        = useState<"add"|"edit"|null>(null);
-  const [editing,      setEditing]      = useState<Student | null>(null);
-  const [form,         setForm]         = useState({ ...INIT_FORM });
-  const [saving,       setSaving]       = useState(false);
-  const [toggleTarget, setToggleTarget] = useState<Student | null>(null);
+  const [editing,          setEditing]         = useState<Student | null>(null);
+  const [form,             setForm]            = useState({ ...INIT_FORM });
+  const [saving,           setSaving]          = useState(false);
+  const [toggleTarget,     setToggleTarget]    = useState<Student | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Student | null>(null);
+  const [hardDeleting,     setHardDeleting]    = useState(false);
   const [formNidError,    setFormNidError]    = useState("");
   const [formNidWarning,  setFormNidWarning]  = useState("");
   const [nidChecksumOk,   setNidChecksumOk]   = useState(false);
+
+  // ── Birthdate dropdowns (พ.ศ.) ────────────────────────────────────
+  const [bDay,   setBDay]   = useState("");
+  const [bMonth, setBMonth] = useState("");
+  const [bYear,  setBYear]  = useState("");
+
+  const handleBirthdate = (d: string, m: string, y: string) => {
+    setBDay(d); setBMonth(m); setBYear(y);
+    const bd = (d && m && y) ? `${parseInt(y) - 543}-${m}-${d}` : "";
+    setForm(f => ({ ...f, birthdate: bd }));
+  };
 
   // ── National ID modal ────────────────────────────────────────────
   const [nidTarget,    setNidTarget]    = useState<Student | null>(null);
@@ -222,13 +246,24 @@ export default function StudentsPage() {
       setNidTarget(null); mutate(swrKey);
       toast("อัปเดตเลขบัตรประชาชนสำเร็จ", "success");
     } catch (e: any) {
-      setNidError(e?.response?.data?.detail || "เกิดข้อผิดพลาด");
+      setNidError(getApiError(e));
     } finally { setNidSaving(false); }
   };
 
-  const openAdd = () => { setEditing(null); setForm({ ...INIT_FORM }); setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false); setModal("add"); };
+  const openAdd = () => {
+    setEditing(null); setForm({ ...INIT_FORM });
+    setBDay(""); setBMonth(""); setBYear("");
+    setFormNidError(""); setFormNidWarning(""); setNidChecksumOk(false);
+    setModal("add");
+  };
   const openEdit = (s: Student) => {
     setEditing(s);
+    let bD = "", bM = "", bY = "";
+    if (s.birthdate) {
+      const [cy, cm, cd] = s.birthdate.split("-");
+      bD = cd || ""; bM = cm || ""; bY = cy ? String(parseInt(cy) + 543) : "";
+    }
+    setBDay(bD); setBMonth(bM); setBYear(bY);
     setForm({ student_code: s.student_code, title: s.title || "นาย",
       first_name: s.first_name, last_name: s.last_name,
       gender: s.gender || "ชาย", birthdate: s.birthdate || "", grade: s.grade || "ม.1", classroom: s.classroom || "1",
@@ -268,7 +303,7 @@ export default function StudentsPage() {
       setModal(null); mutate(swrKey);
       toast(modal === "add" ? "เพิ่มนักเรียนสำเร็จ" : "บันทึกข้อมูลสำเร็จ", "success");
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setSaving(false); }
   };
 
@@ -284,9 +319,23 @@ export default function StudentsPage() {
         toggleTarget.is_active ? "warning" : "success",
       );
     } catch (e: any) {
-      toast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      toast(getApiError(e), "error");
     } finally { setToggleTarget(null); }
   };
+
+  const doHardDelete = async () => {
+    if (!hardDeleteTarget) return;
+    setHardDeleting(true);
+    try {
+      await api.delete(`/admin/students/${hardDeleteTarget.id}/hard`);
+      mutate(swrKey);
+      toast(`ลบ ${hardDeleteTarget.first_name} ${hardDeleteTarget.last_name} ออกจากระบบแล้ว`, "success");
+    } catch (e: any) {
+      toast(getApiError(e), "error");
+    } finally { setHardDeleteTarget(null); setHardDeleting(false); }
+  };
+
+  const canHardDelete = hasRole("systemadmin", "superadmin");
 
   // ── Render ───────────────────────────────────────────────────────
   return (
@@ -515,6 +564,12 @@ export default function StudentsPage() {
                       onClick={() => setToggleTarget(s)} title={s.is_active ? "ปิดบัญชี" : "เปิดบัญชี"}>
                       {s.is_active ? "🚫" : "✅"}
                     </button>
+                    {canHardDelete && (
+                      <button className="btn btn-ghost btn-xs text-error opacity-40 hover:opacity-100"
+                        onClick={() => setHardDeleteTarget(s)} title="ลบถาวร">
+                        🗑️
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -589,16 +644,42 @@ export default function StudentsPage() {
               </div>
               <div className="form-control">
                 <label className="label">
-                  <span className="label-text">วันเกิด</span>
+                  <span className="label-text">วันเกิด (พ.ศ.)</span>
                   <span className="label-text-alt text-base-content/40">ใช้ login</span>
                 </label>
-                <input
-                  type="date"
-                  className="input input-bordered"
-                  value={form.birthdate}
-                  max={new Date().toISOString().slice(0, 10)}
-                  onChange={e => setForm({...form, birthdate: e.target.value})}
-                />
+                <div className="grid grid-cols-3 gap-1.5">
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bDay}
+                    onChange={e => handleBirthdate(e.target.value, bMonth, bYear)}
+                  >
+                    <option value="">วัน</option>
+                    {DAYS_OPT.map(d => <option key={d} value={d}>{parseInt(d)}</option>)}
+                  </select>
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bMonth}
+                    onChange={e => handleBirthdate(bDay, e.target.value, bYear)}
+                  >
+                    <option value="">เดือน</option>
+                    {MONTHS_TH.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                  </select>
+                  <select
+                    className="select select-bordered select-sm"
+                    value={bYear}
+                    onChange={e => handleBirthdate(bDay, bMonth, e.target.value)}
+                  >
+                    <option value="">พ.ศ.</option>
+                    {BIRTH_YEARS_BE.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+                {(bDay && bMonth && bYear) && (
+                  <label className="label">
+                    <span className="label-text-alt text-success">
+                      {parseInt(bDay)} {MONTHS_TH.find(m => m.v === bMonth)?.l} {bYear}
+                    </span>
+                  </label>
+                )}
               </div>
               <div className="form-control col-span-2">
                 <label className="label"><span className="label-text">โรงเรียน</span></label>
@@ -685,6 +766,35 @@ export default function StudentsPage() {
         onConfirm={doToggle}
         onCancel={() => setToggleTarget(null)}
       />
+
+      {/* Hard delete modal */}
+      {hardDeleteTarget && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-sm">
+            <h3 className="font-bold text-lg text-error mb-1">🗑️ ลบนักเรียนถาวร</h3>
+            <p className="text-sm text-base-content/60 mb-4">
+              {hardDeleteTarget.first_name} {hardDeleteTarget.last_name}
+              <span className="ml-2 font-mono text-xs bg-base-200 px-1.5 py-0.5 rounded">
+                {hardDeleteTarget.student_code}
+              </span>
+            </p>
+            <div className="alert alert-error py-2 text-xs mb-4">
+              <span>ลบข้อมูลทั้งหมดถาวร รวมถึงประวัติการประเมิน, แจ้งเตือน และ account — <strong>ไม่สามารถกู้คืนได้</strong></span>
+            </div>
+            <div className="modal-action">
+              <button className="btn btn-ghost btn-sm" onClick={() => setHardDeleteTarget(null)}>
+                ยกเลิก
+              </button>
+              <button className="btn btn-error btn-sm" onClick={doHardDelete} disabled={hardDeleting}>
+                {hardDeleting ? <span className="loading loading-spinner loading-xs" /> : "ยืนยัน ลบถาวร"}
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button onClick={() => setHardDeleteTarget(null)}>close</button>
+          </form>
+        </dialog>
+      )}
 
       {/* National ID correction modal */}
       {nidTarget && (

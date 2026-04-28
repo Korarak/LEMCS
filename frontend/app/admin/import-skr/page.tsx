@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { api } from "@/lib/api";
+import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { getAdminRole } from "@/lib/auth";
@@ -424,7 +424,7 @@ export default function ImportSkrPage() {
       setTruncateSchoolId("");
       setTruncateSearch("");
     } catch (e: any) {
-      showToast(e?.response?.data?.detail || "เกิดข้อผิดพลาด", "error");
+      showToast(getApiError(e), "error");
     } finally {
       setTruncating(false);
     }
@@ -465,7 +465,7 @@ export default function ImportSkrPage() {
       setSuggestionsMap(sugMap);
       setStep(2);
     } catch (err: any) {
-      showToast(err?.response?.data?.detail || "อ่านไฟล์ไม่สำเร็จ", "error");
+      showToast(getApiError(err, "อ่านไฟล์ไม่สำเร็จ"), "error");
     }
   }, [showToast, pickerSchools]);
 
@@ -523,7 +523,7 @@ export default function ImportSkrPage() {
         "success"
       );
     } catch (err: any) {
-      showToast(err?.response?.data?.detail || "นำเข้าไม่สำเร็จ", "error");
+      showToast(getApiError(err, "นำเข้าไม่สำเร็จ"), "error");
     } finally {
       setImporting(false);
     }
