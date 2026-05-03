@@ -46,6 +46,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [role, setRole] = useState<AdminRole | null>(null);
 
@@ -71,8 +72,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       <div className="drawer-content flex flex-col">
         {/* Mobile Navbar */}
-        <div className="navbar bg-base-100 shadow-sm lg:hidden">
-          <label htmlFor="admin-drawer" className="btn btn-ghost drawer-button">☰</label>
+        <div className="navbar bg-base-100 shadow-sm lg:hidden sticky top-0 z-50">
+          <label htmlFor="admin-drawer" className="btn btn-ghost drawer-button">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </label>
           <span className="font-bold text-primary">💙 LEMCS Admin</span>
         </div>
 
@@ -85,12 +90,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Sidebar */}
       <div className="drawer-side z-50">
         <label htmlFor="admin-drawer" className="drawer-overlay" />
-        <aside className="min-h-screen w-64 bg-base-100 flex flex-col border-r border-base-200">
+        <aside className={`min-h-screen ${sidebarCollapsed ? "w-16" : "w-64"} bg-base-100 flex flex-col border-r border-base-200 transition-all duration-200`}>
           {/* Logo */}
-          <div className="p-5 border-b border-base-200">
-            <p className="font-bold text-primary text-xl tracking-tight">💙 LEMCS</p>
-            <p className="text-xs text-base-content/70 mt-0.5 font-medium">Loei Educational MindCare System</p>
-            <p className="text-xs text-base-content/40 mt-0.5 leading-tight">ระบบคัดกรองสุขภาพจิตนักเรียน<br/>จังหวัดเลย</p>
+          <div className={`border-b border-base-200 flex items-center ${sidebarCollapsed ? "p-3 justify-center" : "p-5 justify-between"}`}>
+            {sidebarCollapsed ? (
+              <button className="btn btn-ghost btn-xs p-1 hidden lg:flex items-center justify-center text-xl" onClick={() => setSidebarCollapsed(false)} title="ขยายเมนู">💙</button>
+            ) : (
+              <>
+                <div>
+                  <p className="font-bold text-primary text-xl tracking-tight">💙 LEMCS</p>
+                  <p className="text-xs text-base-content/70 mt-0.5 font-medium">Loei Educational MindCare System</p>
+                  <p className="text-xs text-base-content/40 mt-0.5 leading-tight">ระบบคัดกรองสุขภาพจิตนักเรียน<br/>จังหวัดเลย</p>
+                </div>
+                <button className="btn btn-ghost btn-xs hidden lg:flex shrink-0 ml-1" onClick={() => setSidebarCollapsed(true)} title="ย่อเมนู">‹</button>
+              </>
+            )}
           </div>
 
           {/* Nav */}
@@ -100,23 +114,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               if (!items.length) return null;
               return (
               <div key={section.label}>
-                <p className="text-xs font-semibold text-base-content/40 uppercase tracking-widest px-2 mb-1">
-                  {section.label}
-                </p>
+                {!sidebarCollapsed && (
+                  <p className="text-xs font-semibold text-base-content/40 uppercase tracking-widest px-2 mb-1">
+                    {section.label}
+                  </p>
+                )}
                 <div className="space-y-0.5">
                   {items.map(item => (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setDrawerOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all text-sm ${
+                      title={sidebarCollapsed ? item.label : undefined}
+                      className={`flex items-center ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"} py-2 rounded-lg transition-all text-sm ${
                         pathname === item.href
                           ? "bg-primary text-primary-content font-medium shadow-sm"
                           : "hover:bg-base-200 text-base-content/80"
                       }`}
                     >
                       <span className="text-base">{item.icon}</span>
-                      <span>{item.label}</span>
+                      {!sidebarCollapsed && <span>{item.label}</span>}
                     </Link>
                   ))}
                 </div>
@@ -128,11 +145,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {/* Logout */}
           <div className="p-3 border-t border-base-200">
             <button
-              className="flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-error hover:bg-error/10 transition-colors"
+              className={`flex items-center ${sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"} py-2 rounded-lg w-full text-sm text-error hover:bg-error/10 transition-colors`}
+              title={sidebarCollapsed ? "ออกจากระบบ" : undefined}
               onClick={() => setConfirmLogout(true)}
             >
               <span>🚪</span>
-              <span>ออกจากระบบ</span>
+              {!sidebarCollapsed && <span>ออกจากระบบ</span>}
             </button>
           </div>
         </aside>

@@ -15,7 +15,7 @@ export default function QuestionCard({ question, questionNumber, onAnswer, selec
     <div className="card bg-base-100 shadow-xl w-full max-w-lg mx-auto">
       <div className="card-body gap-6 p-6 sm:p-8">
         {subtitle && (
-          <p className="text-sm text-base-content/60 -mb-2">{subtitle}</p>
+          <p className="text-sm font-medium text-primary/90 bg-primary/10 px-3 py-2 rounded-lg -mb-2">{subtitle}</p>
         )}
         <h2 className="text-2xl font-semibold text-base-content leading-relaxed">
           {question.text}
