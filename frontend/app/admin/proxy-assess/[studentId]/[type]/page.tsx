@@ -242,9 +242,9 @@ function ProxyFormInner() {
           {/* Current question */}
           <div className={`card bg-base-100 shadow transition-opacity duration-300 ${isAnimating ? "opacity-0" : "opacity-100"}`}>
             <div className="card-body gap-5">
-              {typeRaw === "CDI" && (
-                <p className="text-xs text-base-content/50 -mb-3">
-                  เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของนักเรียนมากที่สุดระยะ 2 สัปดาห์ที่ผ่านมา
+              {typeRaw === "CDI" && currentIdx === 0 && (
+                <p className="text-sm font-medium text-primary/90 bg-primary/10 px-3 py-2 rounded-lg -mb-3">
+                  เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของนักเรียนมากที่สุดในระยะ 2 สัปดาห์ที่ผ่านมา
                 </p>
               )}
               <p className="text-base font-medium leading-relaxed">{q.text}</p>
@@ -253,11 +253,7 @@ function ProxyFormInner() {
                   <button
                     key={String(opt.value)}
                     onClick={() => handleAnswer(q.key, opt.value)}
-                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm ${
-                      responses[q.key] === opt.value
-                        ? "border-primary bg-primary/10 font-medium"
-                        : "border-base-200 hover:border-primary/50 hover:bg-base-200/50"
-                    }`}
+                    className="w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm border-base-200 hover:border-primary/50 hover:bg-base-200/50"
                   >
                     {opt.label}
                   </button>

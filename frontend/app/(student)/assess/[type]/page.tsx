@@ -124,8 +124,7 @@ export default function AssessmentPage() {
             question={currentQuestion}
             questionNumber={currentIndex + 1}
             onAnswer={handleAnswer}
-            selectedValue={responses[currentQuestion.key]}
-            subtitle={type === "CDI" ? "เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของท่านมากที่สุดระยะ 2 สัปดาห์ที่ผ่านมา" : undefined}
+            subtitle={type === "CDI" && currentIndex === 0 ? "เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของท่านมากที่สุดในระยะ 2 สัปดาห์ที่ผ่านมา" : undefined}
           />
         </div>
 
@@ -142,7 +141,15 @@ export default function AssessmentPage() {
             {currentIndex === 0 ? "กลับหน้าหลัก" : "ย้อนกลับ"}
           </button>
           
-          {currentIndex < questions.length - 1 ? (
+          {allAnswered ? (
+             <button
+               className="btn btn-primary px-8 shadow-sm"
+               onClick={() => setConfirmSubmit(true)}
+               disabled={isSubmitting}
+             >
+               {isSubmitting ? <span className="loading loading-spinner" /> : "ส่งคำตอบและประเมินผล"}
+             </button>
+          ) : currentIndex < questions.length - 1 ? (
              <button
                className="btn btn-ghost"
                onClick={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))}
@@ -154,9 +161,9 @@ export default function AssessmentPage() {
              <button
                className="btn btn-primary px-8 shadow-sm"
                onClick={() => setConfirmSubmit(true)}
-               disabled={isSubmitting || !allAnswered}
+               disabled
              >
-               {isSubmitting ? <span className="loading loading-spinner" /> : "ส่งคำตอบและประเมินผล"}
+               ส่งคำตอบและประเมินผล
              </button>
           )}
         </div>
