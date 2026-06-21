@@ -44,10 +44,11 @@ export default function ResultPage() {
 
   if (!result) return null;
 
+  const showInterpretation = result.show_interpretation !== false;
+
   return (
     <div className="flex-1 w-full p-4 py-8 md:py-12 flex flex-col gap-8 items-center">
-      {/* ⚠️ Suicide Risk: แสดง crisis resources เป็นอันดับแรก */}
-      {result.suicide_risk && (
+      {showInterpretation && result.suicide_risk && (
         <div className="w-full animate-bounce mt-4">
           <CrisisResources urgent={true} />
         </div>
@@ -56,8 +57,7 @@ export default function ResultPage() {
       <ResultCard result={result} />
 
       <div className="w-full max-w-lg mx-auto flex flex-col gap-4">
-        {/* แสดง resource ปกติในกรณีที่ไม่ได้เสี่ยงระดับ Suicide */}
-        {!result.suicide_risk && (
+        {showInterpretation && !result.suicide_risk && (
           result.severity_level === "moderate" ||
           result.severity_level === "severe" ||
           result.severity_level === "very_severe" ||
@@ -66,8 +66,8 @@ export default function ResultPage() {
            <CrisisResources urgent={false} />
         )}
 
-        <button 
-          onClick={() => router.push("/dashboard")} 
+        <button
+          onClick={() => router.push("/dashboard")}
           className="btn btn-outline btn-block btn-lg bg-base-100"
         >
           กลับหน้าหลัก

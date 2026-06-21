@@ -6,7 +6,7 @@ from app.deps import get_current_student
 from app.schemas.assessment import (
     AssessmentSubmitRequest, AssessmentResponse, AutosaveRequest
 )
-from app.models.db_models import Assessment, Student, SurveyRound
+from app.models.db_models import Assessment, Student, SurveyRound, AppSetting
 from app.services.scoring import calculate_score
 from app.services.recommendation_service import get_recommendations
 from app.services.alert_service import check_and_trigger_alert
@@ -17,6 +17,13 @@ from datetime import date
 
 router = APIRouter()
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+async def _get_show_interpretation(db: AsyncSession) -> bool:
+    """ดึงค่า setting show_result_interpretation จาก DB"""
+    row = await db.execute(select(AppSetting).where(AppSetting.key == "show_result_interpretation"))
+    setting = row.scalar_one_or_none()
+    return setting is None or setting.value == "true"
 
 
 def get_current_academic_year() -> str:
@@ -160,6 +167,7 @@ async def submit_assessment(
     await db.commit()
 
     # 6. Return ผล
+    show_interp = await _get_show_interpretation(db)
     return AssessmentResponse(
         id=str(assessment.id),
         assessment_type=body.assessment_type,
@@ -167,6 +175,7 @@ async def submit_assessment(
         severity_level=result["severity_level"],
         suicide_risk=result.get("suicide_risk", False),
         recommendations=get_recommendations(body.assessment_type, result["severity_level"]),
+        show_interpretation=show_interp,
         created_at=assessment.created_at,
     )
 
@@ -214,6 +223,7 @@ async def get_assessment_result(
     if not assessment:
         raise HTTPException(status_code=404, detail="ไม่พบผลประเมิน")
 
+    show_interp = await _get_show_interpretation(db)
     return AssessmentResponse(
         id=str(assessment.id),
         assessment_type=assessment.assessment_type,
@@ -221,5 +231,6 @@ async def get_assessment_result(
         severity_level=assessment.severity_level,
         suicide_risk=assessment.suicide_risk,
         recommendations=get_recommendations(assessment.assessment_type, assessment.severity_level),
+        show_interpretation=show_interp,
         created_at=assessment.created_at,
     )

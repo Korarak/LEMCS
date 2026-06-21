@@ -45,6 +45,12 @@ async def lifespan(app: FastAPI):
         "ALTER TABLE assessments ADD COLUMN IF NOT EXISTS classroom_snapshot TEXT",
         "ALTER TABLE survey_rounds ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ",
         "ALTER TABLE affiliations ADD COLUMN IF NOT EXISTS abbreviation TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL",
+        """CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )""",
+        "INSERT INTO app_settings (key, value) VALUES ('show_result_interpretation', 'true') ON CONFLICT DO NOTHING",
         "UPDATE affiliations SET abbreviation = 'สอศ.' WHERE name ILIKE '%อาชีวศึกษา%' AND abbreviation IS NULL",
         "UPDATE affiliations SET abbreviation = 'สพฐ.' WHERE name ILIKE '%การศึกษาขั้นพื้นฐาน%' AND abbreviation IS NULL",
         "UPDATE affiliations SET abbreviation = 'สช.'  WHERE name ILIKE '%เอกชน%' AND abbreviation IS NULL",

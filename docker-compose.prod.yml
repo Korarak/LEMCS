@@ -9,8 +9,10 @@ services:
     container_name: lemcs-frontend
     ports:
       - "3000:3000"
+    # NEXT_PUBLIC_* vars are baked in at build time (Dockerfile ARG), not runtime.
+    # API URL is set via PROD_NEXT_PUBLIC_API_URL GitHub secret → passed as build-arg in CI/CD.
     environment:
-      - NEXT_PUBLIC_API_URL=${API_BASE_URL}
+      - NODE_ENV=production
     restart: unless-stopped
     depends_on:
       backend:

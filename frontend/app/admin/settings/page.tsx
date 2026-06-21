@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import useSWR from "swr";
 import RoleGuard from "@/components/admin/RoleGuard";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { api, getApiError } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { hasRole } from "@/lib/auth";
+
+const fetcher = (url: string) => api.get(url).then(r => r.data);
 
 interface Affiliation { id: number; name: string; abbreviation?: string | null; }
 
@@ -90,8 +93,60 @@ function DangerZone() {
   );
 }
 
+function AssessmentSettings() {
+  const { toast: showToast } = useToast();
+  const { data, mutate, isLoading } = useSWR("/admin/app-settings", fetcher);
+  const [saving, setSaving] = useState(false);
+
+  const showInterpretation: boolean = data?.show_result_interpretation ?? true;
+
+  async function toggle() {
+    setSaving(true);
+    try {
+      await api.put("/admin/app-settings", { show_result_interpretation: !showInterpretation });
+      await mutate();
+      showToast("บันทึกการตั้งค่าแล้ว", "success");
+    } catch (e: any) {
+      showToast(getApiError(e), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card bg-base-100 shadow">
+      <div className="card-body p-5">
+        <h2 className="card-title text-base">📋 การตั้งค่าแบบประเมิน</h2>
+        <div className="flex items-center justify-between gap-4 py-2">
+          <div>
+            <p className="font-medium text-sm">แสดงการแปรผลหลังทำแบบประเมิน</p>
+            <p className="text-xs text-base-content/50 mt-0.5">
+              เมื่อเปิด — นักเรียนจะเห็นคำแนะนำเบื้องต้นหลังทำแบบประเมินเสร็จ
+            </p>
+          </div>
+          {isLoading ? (
+            <span className="loading loading-spinner loading-sm" />
+          ) : (
+            <input
+              type="checkbox"
+              className="toggle toggle-primary"
+              checked={showInterpretation}
+              disabled={saving}
+              onChange={toggle}
+            />
+          )}
+        </div>
+        <div className={`text-xs px-3 py-2 rounded-lg ${showInterpretation ? "bg-success/10 text-success" : "bg-base-200 text-base-content/50"}`}>
+          {showInterpretation ? "✓ นักเรียนจะเห็นคำแนะนำเบื้องต้นในหน้าผลประเมิน" : "✕ ซ่อนคำแนะนำ — นักเรียนเห็นแค่คะแนนและระดับ"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPageInner() {
   const isSuperAdmin = hasRole("superadmin", "systemadmin");
+  const isSystemAdmin = hasRole("systemadmin");
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
@@ -134,6 +189,8 @@ function SettingsPageInner() {
           </div>
         </div>
       </div>
+
+      {isSystemAdmin && <AssessmentSettings />}
 
       {isSuperAdmin && <DangerZone />}
     </div>

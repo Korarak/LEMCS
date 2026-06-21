@@ -43,8 +43,12 @@ async def list_alerts(
         .join(Assessment, Alert.assessment_id == Assessment.id)
     )
 
+    # ครูไม่มีสิทธิ์ดู alerts
+    if current_user.role == "schoolteacher":
+        raise HTTPException(403, "ไม่มีสิทธิ์เข้าถึง")
+
     # Role-based scope (ล็อกตาม role ก่อน ไม่ให้ override ด้วย query param)
-    if current_user.role == "schooladmin":
+    if current_user.role in ("schooladmin", "schooldirector"):
         query = query.where(Student.school_id == current_user.school_id)
     elif current_user.role == "commissionadmin":
         if current_user.district_id:
@@ -157,8 +161,12 @@ async def get_alert(
         .join(Assessment, Alert.assessment_id == Assessment.id)
         .where(Alert.id == alert_id)
     )
+    # ครูไม่มีสิทธิ์ดู alert รายละเอียด
+    if current_user.role == "schoolteacher":
+        raise HTTPException(403, "ไม่มีสิทธิ์เข้าถึง")
+
     # Scope lock — ป้องกัน cross-school/district access
-    if current_user.role == "schooladmin":
+    if current_user.role in ("schooladmin", "schooldirector"):
         query = query.where(Student.school_id == current_user.school_id)
     elif current_user.role == "commissionadmin":
         if current_user.district_id:
@@ -211,6 +219,10 @@ async def update_alert(
     db: AsyncSession = Depends(get_db)
 ):
     """อัปเดตสถานะ case + บันทึก note + assign ผู้รับผิดชอบ"""
+    # ครูไม่มีสิทธิ์แก้ไข alert
+    if current_user.role == "schoolteacher":
+        raise HTTPException(403, "ไม่มีสิทธิ์เข้าถึง")
+
     # Scope-aware fetch — ป้องกัน cross-school update
     query = (
         select(Alert)
@@ -219,7 +231,7 @@ async def update_alert(
         .join(District, School.district_id == District.id)
         .where(Alert.id == alert_id)
     )
-    if current_user.role == "schooladmin":
+    if current_user.role in ("schooladmin", "schooldirector"):
         query = query.where(Student.school_id == current_user.school_id)
     elif current_user.role == "commissionadmin":
         if current_user.district_id:

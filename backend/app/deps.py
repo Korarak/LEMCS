@@ -12,7 +12,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 # ──────────────────────────────────────────
 # Role definitions
 # ──────────────────────────────────────────
-ADMIN_ROLES = {"systemadmin", "superadmin", "commissionadmin", "schooladmin"}
+SCHOOL_STAFF_ROLES = {"schooldirector", "schoolteacher"}
+ADMIN_ROLES = {"systemadmin", "superadmin", "commissionadmin", "schooladmin"} | SCHOOL_STAFF_ROLES
 ALL_ROLES = ADMIN_ROLES | {"student"}
 
 async def get_current_user(
@@ -111,7 +112,7 @@ async def check_report_scope(
             scope.school_id = school_id
         return scope
 
-    elif current_user.role == "schooladmin":
+    elif current_user.role in ("schooladmin", "schooldirector"):
         return QueryScope(school_id=current_user.school_id)
 
     else:

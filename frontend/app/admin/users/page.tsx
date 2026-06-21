@@ -27,6 +27,8 @@ const ROLE_LABELS: Record<string, string> = {
   superadmin:      "ศึกษาธิการจังหวัด",
   commissionadmin: "แอดมินเขต/สังกัด",
   schooladmin:     "แอดมินโรงเรียน",
+  schooldirector:  "ผู้อำนวยการโรงเรียน",
+  schoolteacher:   "ครู",
 };
 
 const ROLE_BADGE: Record<string, string> = {
@@ -34,6 +36,8 @@ const ROLE_BADGE: Record<string, string> = {
   superadmin:      "badge-warning",
   commissionadmin: "badge-info",
   schooladmin:     "badge-success",
+  schooldirector:  "badge-primary",
+  schoolteacher:   "badge-secondary",
 };
 
 const ROLE_SCOPE_NOTE: Record<string, string> = {

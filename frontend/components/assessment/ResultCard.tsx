@@ -42,12 +42,31 @@ interface ResultCardProps {
     severity_level: string;
     suicide_risk: boolean;
     recommendations: string[];
+    show_interpretation?: boolean;
     created_at: string;
   };
 }
 
 export default function ResultCard({ result }: ResultCardProps) {
+  const showInterpretation = result.show_interpretation !== false;
   const style = SEVERITY_STYLES[result.severity_level] || SEVERITY_STYLES.moderate;
+
+  if (!showInterpretation) {
+    return (
+      <div className="card shadow-xl bg-base-100 border border-base-200 w-full max-w-lg mx-auto">
+        <div className="card-body items-center text-center gap-5 p-8">
+          <span className="text-6xl">✅</span>
+          <h2 className="text-xl font-bold text-base-content leading-snug">
+            ทำแบบประเมินเสร็จสมบูรณ์
+          </h2>
+          <p className="text-base-content/60 text-sm leading-relaxed">
+            ขอบคุณที่ทำแบบประเมิน<br />
+            ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`card shadow-xl border-t-4 border-t-current ${style.text} ${style.bg} w-full max-w-lg mx-auto`}>
@@ -69,7 +88,6 @@ export default function ResultCard({ result }: ResultCardProps) {
           {getSeverityLabel(result.assessment_type, result.severity_level)}
         </span>
 
-        {/* ข้อแนะนำ */}
         {result.recommendations && result.recommendations.length > 0 && (
           <div className="text-left w-full mt-6 bg-base-100 rounded-xl p-5 shadow-sm border border-base-200 text-base-content">
             <h3 className="font-bold text-lg mb-3 flex items-center gap-2">

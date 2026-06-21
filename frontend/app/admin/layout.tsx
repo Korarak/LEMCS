@@ -14,9 +14,9 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "ภาพรวม",
     items: [
-      { href: "/admin/dashboard", label: "ภาพรวม",      icon: "📊" },
-      { href: "/admin/alerts",    label: "การแจ้งเตือน", icon: "🚨" },
-      { href: "/admin/reports",   label: "รายงาน",       icon: "📋" },
+      { href: "/admin/dashboard", label: "ภาพรวม",      icon: "📊", roles: ["systemadmin", "superadmin", "commissionadmin", "schooladmin", "schooldirector"] },
+      { href: "/admin/alerts",    label: "การแจ้งเตือน", icon: "🚨", roles: ["systemadmin", "superadmin", "commissionadmin", "schooladmin", "schooldirector"] },
+      { href: "/admin/reports",   label: "รายงาน",       icon: "📋", roles: ["systemadmin", "superadmin", "commissionadmin", "schooladmin", "schooldirector"] },
     ],
   },
   {
@@ -24,8 +24,9 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/admin/organization",  label: "สังกัด / เขตพื้นที่",      icon: "🏛️", roles: ["systemadmin"] },
       { href: "/admin/schools",       label: "โรงเรียน",               icon: "🏫", roles: ["systemadmin", "superadmin"] },
-      { href: "/admin/students",      label: "นักเรียน",               icon: "👥" },
-      { href: "/admin/proxy-assess",  label: "กรอกแบบประเมินชั้นเรียน", icon: "📋", roles: ["schooladmin"] },
+      { href: "/admin/students",      label: "นักเรียน",               icon: "👥", roles: ["systemadmin", "superadmin", "commissionadmin", "schooladmin", "schooldirector"] },
+      { href: "/admin/proxy-assess",  label: "กรอกแบบประเมินชั้นเรียน", icon: "📋", roles: ["schooladmin", "schooldirector", "schoolteacher"] },
+      { href: "/admin/school-staff",  label: "ผู้ใช้งานโรงเรียน",       icon: "👥", roles: ["schooladmin"] },
     ],
   },
   {
@@ -51,7 +52,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [role, setRole] = useState<AdminRole | null>(null);
 
   useEffect(() => {
-    setRole(getAdminRole());
+    const r = getAdminRole();
+    setRole(r);
+    // schoolteacher ไม่มีสิทธิ์เข้าหน้า dashboard — redirect ไป proxy-assess
+    if (r === "schoolteacher" && pathname === "/admin/dashboard") {
+      router.replace("/admin/proxy-assess");
+    }
   }, [pathname]);
 
   function visibleItems(items: NavItem[]): NavItem[] {

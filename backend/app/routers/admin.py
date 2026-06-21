@@ -908,6 +908,44 @@ async def delete_school(
     return {"deleted": True}
 
 # ──────────────────────────────────────────
+# App Settings (systemadmin only)
+# ──────────────────────────────────────────
+
+from app.models.db_models import AppSetting as _AppSetting
+
+class AppSettingsUpdate(BaseModel):
+    show_result_interpretation: bool
+
+@router.get("/app-settings")
+async def get_app_settings(
+    current_user = Depends(require_role("systemadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """ดึงการตั้งค่าระบบ"""
+    rows = await db.execute(select(_AppSetting))
+    settings_list = rows.scalars().all()
+    result = {s.key: s.value for s in settings_list}
+    return {
+        "show_result_interpretation": result.get("show_result_interpretation", "true") == "true",
+    }
+
+@router.put("/app-settings")
+async def update_app_settings(
+    body: AppSettingsUpdate,
+    current_user = Depends(require_role("systemadmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """อัปเดตการตั้งค่าระบบ (systemadmin เท่านั้น)"""
+    row = await db.execute(select(_AppSetting).where(_AppSetting.key == "show_result_interpretation"))
+    setting = row.scalar_one_or_none()
+    if setting:
+        setting.value = "true" if body.show_result_interpretation else "false"
+    else:
+        db.add(_AppSetting(key="show_result_interpretation", value="true" if body.show_result_interpretation else "false"))
+    await db.commit()
+    return {"updated": True, "show_result_interpretation": body.show_result_interpretation}
+
+# ──────────────────────────────────────────
 # Current admin user info
 # ──────────────────────────────────────────
 
@@ -1056,6 +1094,148 @@ async def toggle_user_active(
     _guard_superadmin_scope(current_user, user.role)
     if str(user.id) == str(current_user.id):
         raise HTTPException(400, "ไม่สามารถปิดบัญชีตัวเองได้")
+    user.is_active = not user.is_active
+    await db.commit()
+    return {"id": str(user.id), "is_active": user.is_active, "toggled": True}
+
+# ──────────────────────────────────────────
+# CRUD: School Staff (schooladmin manages directors/teachers)
+# ──────────────────────────────────────────
+
+from typing import Literal
+
+SCHOOL_STAFF_ROLE_LIST = ["schooldirector", "schoolteacher"]
+
+SCHOOL_STAFF_ROLE_LABELS = {
+    "schooldirector": "ผู้อำนวยการ",
+    "schoolteacher": "ครู",
+}
+
+class SchoolStaffCreate(BaseModel):
+    username: str
+    password: str
+    role: Literal["schooldirector", "schoolteacher"]
+
+class SchoolStaffUpdate(BaseModel):
+    role: Literal["schooldirector", "schoolteacher"] | None = None
+    is_active: bool | None = None
+
+class SchoolStaffResetPassword(BaseModel):
+    new_password: str
+
+def _guard_school_staff_scope(current_user, target_user):
+    """schooladmin จัดการได้เฉพาะ staff ของโรงเรียนตัวเอง"""
+    if target_user.school_id != current_user.school_id:
+        raise HTTPException(403, "ไม่สามารถจัดการ staff ของโรงเรียนอื่นได้")
+    if target_user.role not in SCHOOL_STAFF_ROLE_LIST:
+        raise HTTPException(403, "ไม่สามารถจัดการบัญชีประเภทนี้ได้")
+
+@router.get("/school-staff")
+async def list_school_staff(
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """รายชื่อ staff ของโรงเรียน (schooladmin เท่านั้น)"""
+    result = await db.execute(
+        select(User)
+        .where(
+            User.school_id == current_user.school_id,
+            User.role.in_(SCHOOL_STAFF_ROLE_LIST),
+        )
+        .order_by(User.role, User.username)
+    )
+    users = result.scalars().all()
+    return [
+        {
+            "id": str(u.id),
+            "username": u.username,
+            "role": u.role,
+            "role_label": SCHOOL_STAFF_ROLE_LABELS.get(u.role, u.role),
+            "is_active": u.is_active,
+            "last_login": u.last_login.isoformat() if u.last_login else None,
+        }
+        for u in users
+    ]
+
+@router.post("/school-staff")
+async def create_school_staff(
+    body: SchoolStaffCreate,
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """สร้าง staff ใหม่ (schooldirector หรือ schoolteacher) สำหรับโรงเรียนของตัวเอง"""
+    import bcrypt
+    existing = await db.execute(select(User).where(User.username == body.username))
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, f"ชื่อผู้ใช้ '{body.username}' มีอยู่แล้วในระบบ")
+    hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    user = User(
+        username=body.username,
+        hashed_password=hashed,
+        role=body.role,
+        school_id=current_user.school_id,
+        created_by_user_id=current_user.id,
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "role": user.role,
+        "role_label": SCHOOL_STAFF_ROLE_LABELS.get(user.role, user.role),
+        "created": True,
+    }
+
+@router.put("/school-staff/{user_id}")
+async def update_school_staff(
+    user_id: str,
+    body: SchoolStaffUpdate,
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """แก้ไข role หรือสถานะ staff"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "ไม่พบผู้ใช้")
+    _guard_school_staff_scope(current_user, user)
+    for field, val in body.model_dump(exclude_unset=True).items():
+        setattr(user, field, val)
+    await db.commit()
+    return {"id": str(user.id), "updated": True}
+
+@router.post("/school-staff/{user_id}/reset-password")
+async def reset_school_staff_password(
+    user_id: str,
+    body: SchoolStaffResetPassword,
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """รีเซ็ตรหัสผ่าน staff"""
+    import bcrypt
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "ไม่พบผู้ใช้")
+    _guard_school_staff_scope(current_user, user)
+    user.hashed_password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    await db.commit()
+    return {"reset": True}
+
+@router.delete("/school-staff/{user_id}")
+async def toggle_school_staff_active(
+    user_id: str,
+    current_user = Depends(require_role("schooladmin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """เปิด/ปิดการใช้งาน staff"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "ไม่พบผู้ใช้")
+    _guard_school_staff_scope(current_user, user)
     user.is_active = not user.is_active
     await db.commit()
     return {"id": str(user.id), "is_active": user.is_active, "toggled": True}
@@ -1334,7 +1514,7 @@ async def proxy_assess_students(
     from datetime import date as dt
 
     # ตรวจสอบสิทธิ์และกำหนด effective_school_id
-    if current_user.role == "schooladmin":
+    if current_user.role in ("schooladmin", "schooldirector", "schoolteacher"):
         effective_school_id = current_user.school_id
     elif school_id:
         # commissionadmin ตรวจสอบว่าโรงเรียนอยู่ในสังกัด/เขตของตัวเอง
@@ -1477,7 +1657,7 @@ async def proxy_assess_submit(
     student = stu_result.scalar_one_or_none()
     if not student:
         raise HTTPException(404, "ไม่พบนักเรียน")
-    if current_user.role == "schooladmin" and student.school_id != current_user.school_id:
+    if current_user.role in ("schooladmin", "schooldirector", "schoolteacher") and student.school_id != current_user.school_id:
         raise HTTPException(403, "นักเรียนไม่ได้อยู่ในโรงเรียนของท่าน")
     elif current_user.role == "commissionadmin" and current_user.district_id:
         sch_r = await db.execute(select(School).where(School.id == student.school_id))

@@ -54,19 +54,22 @@ export default function AssessmentPage() {
   }, [responses, handleAutosave]);
 
   const handleAnswer = useCallback((questionKey: string, value: number | string | boolean) => {
+    if (isAnimating) return;
     setResponses(prev => ({ ...prev, [questionKey]: value }));
-    
-    setIsAnimating(true);
+
+    // แสดง selection highlight 450ms ก่อน fade-out
     setTimeout(() => {
-      setCurrentIndex(current => {
-        if (current < questions.length - 1) {
-          return current + 1;
-        }
-        return current;
-      });
-      setIsAnimating(false);
-    }, 350);
-  }, [questions]);
+      setIsAnimating(true);
+      setTimeout(() => {
+        setCurrentIndex(current => {
+          if (current < questions.length - 1) return current + 1;
+          return current;
+        });
+        setIsAnimating(false);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }, 300);
+    }, 450);
+  }, [questions, isAnimating]);
 
   const handleSubmit = async () => {
     setConfirmSubmit(false);
@@ -124,6 +127,7 @@ export default function AssessmentPage() {
             question={currentQuestion}
             questionNumber={currentIndex + 1}
             onAnswer={handleAnswer}
+            selectedValue={responses[currentQuestion.key]}
             subtitle={type === "CDI" && currentIndex === 0 ? "เลือกประโยคที่ตรงกับความรู้สึก หรือความคิดของท่านมากที่สุดในระยะ 2 สัปดาห์ที่ผ่านมา" : undefined}
           />
         </div>
