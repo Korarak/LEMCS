@@ -55,7 +55,9 @@ class User(Base):
       - systemadmin:     ทีม Dev / แอดมินข้อมูลระบบ (ดูและจัดการทุกอย่าง)
       - superadmin:      ศึกษาธิการจังหวัดเลย (ดูทุกสังกัด ฟิลเตอร์ทุกระดับ)
       - commissionadmin: แอดมินระดับเขตพื้นที่/สังกัด (ดูเฉพาะโรงเรียนในสังกัด)
-      - schooladmin:     แอดมินระดับโรงเรียน (ดูเฉพาะโรงเรียนตัวเอง)
+      - schooladmin:     แอดมินระดับโรงเรียน (ดูเฉพาะโรงเรียนตัวเอง จัดการ staff)
+      - schooldirector:  ผู้อำนวยการ (ดูข้อมูลทั้งหมดของโรงเรียน แบบ read-mostly)
+      - schoolteacher:   ครู (ทำแบบประเมินแทนนักเรียนได้เท่านั้น)
       - student:         ผู้ทำแบบประเมิน
     """
     __tablename__ = "users"
@@ -63,10 +65,11 @@ class User(Base):
     student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=True)
     username = Column(Text, unique=True)
     hashed_password = Column(Text)
-    role = Column(Text, nullable=False)  # systemadmin|superadmin|commissionadmin|schooladmin|student
+    role = Column(Text, nullable=False)  # systemadmin|superadmin|commissionadmin|schooladmin|schooldirector|schoolteacher|student
     school_id = Column(Integer, ForeignKey("schools.id"), nullable=True)
     affiliation_id = Column(Integer, ForeignKey("affiliations.id"), nullable=True)  # สังกัด (สำหรับ commissionadmin)
     district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)        # เขตพื้นที่ (สำหรับ commissionadmin)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # schooladmin ที่สร้าง staff นี้
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime(timezone=True))
 
@@ -148,3 +151,9 @@ class AuditLog(Base):
     details = Column(JSONB)
     ip_address = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class AppSetting(Base):
+    """การตั้งค่าระบบ (key-value)"""
+    __tablename__ = "app_settings"
+    key = Column(Text, primary_key=True)
+    value = Column(Text, nullable=False)

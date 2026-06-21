@@ -17,4 +17,5 @@ class AssessmentResponse(BaseModel):
     severity_level: str
     suicide_risk: bool
     recommendations: List[str]
+    show_interpretation: bool = True
     created_at: datetime

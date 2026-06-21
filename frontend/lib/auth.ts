@@ -3,7 +3,7 @@
  * Never use for security decisions; use for UX only (menu hiding, redirects).
  */
 
-export type AdminRole = "systemadmin" | "superadmin" | "commissionadmin" | "schooladmin";
+export type AdminRole = "systemadmin" | "superadmin" | "commissionadmin" | "schooladmin" | "schooldirector" | "schoolteacher";
 
 function decodeToken(token: string): Record<string, unknown> | null {
   try {
